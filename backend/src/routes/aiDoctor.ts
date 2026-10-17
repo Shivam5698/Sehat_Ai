@@ -3,7 +3,10 @@ import { Router, type NextFunction, type Response } from 'express';
 import { prisma } from '../database/client.js';
 import { AuthRequest, requireAuth } from '../middleware/auth.js';
 import { emergencyPreScreen } from '../services/emergencyPreScreen.js';
-import { orchestrateAgents } from '../services/agentOrchestrator.js';
+import {
+  getHospitalRecommendations,
+  orchestrateAgents,
+} from '../services/agentOrchestrator.js';
 import type { AgentOrchestrationResult } from '../services/agentOrchestrator.js';
 import type { SeverityRiskLevel } from '../services/agents/severityAdapter.js';
 
@@ -239,6 +242,7 @@ aiDoctorRouter.post(
     await persistResult(consultation.id, input.message, language, result);
 
     const urgency = getUrgency(result);
+    const hospitals = await getHospitalRecommendations(urgency);
     const nextAction =
       urgency === 'emergency'
         ? 'seek-emergency-care'
@@ -278,6 +282,7 @@ aiDoctorRouter.post(
         disclaimerShown: true,
       },
       ...(result.followUpQuestion ? { followUpQuestion: result.followUpQuestion } : {}),
+      ...(hospitals ? { hospitals } : {}),
       nextAction,
       agentsInvoked: result.agentsInvoked,
       degraded: result.degraded,

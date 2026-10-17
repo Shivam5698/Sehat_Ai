@@ -13,6 +13,10 @@ import {
   type SafetyAnalysis,
 } from './agents/safetyAdapter.js';
 import { composeReply } from './replyComposer.js';
+import {
+  HospitalAgent,
+  type HospitalRecommendation,
+} from '../agents/hospitalAgent.js';
 
 const AGENT_TIMEOUT_MS = 6000;
 const TOTAL_TIMEOUT_MS = 12000;
@@ -45,6 +49,14 @@ export interface AgentOrchestrationResult {
   symptom?: SymptomAnalysis;
   severity?: SeverityAnalysis;
   safety?: SafetyAnalysis;
+}
+
+export async function getHospitalRecommendations(
+  urgency: 'emergency' | 'urgent' | 'routine' | 'unknown',
+): Promise<HospitalRecommendation[] | undefined> {
+  if (urgency !== 'urgent' && urgency !== 'emergency') return undefined;
+  const hospitals = await new HospitalAgent().run();
+  return hospitals.filter((hospital) => hospital.sample);
 }
 
 type AgentResult<T> =
