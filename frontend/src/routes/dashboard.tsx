@@ -44,7 +44,7 @@ const timeline = [
   "Fever detected",
   "Severity analyzed",
   "Hospital recommended",
-  "Appointment suggested",
+  "Appointment booked",
   "Report generated",
 ];
 
