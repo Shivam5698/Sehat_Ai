@@ -29,6 +29,20 @@ interface ConsultationSession {
 
 const activeSessions = new Map<string, ConsultationSession>();
 
+async function publishConsultationEvent(
+  publisher: { publish(channel: string, message: string): Promise<unknown> },
+  message: string,
+) {
+  try {
+    await publisher.publish('sehat:consultation:events', message);
+  } catch (error) {
+    console.error(
+      '[SOCKET] Redis event publish failed:',
+      error instanceof Error ? error.message : String(error),
+    );
+  }
+}
+
 export function initConsultationSocket(io: Server) {
   const sttService = new SpeechService();
   const ttsService = new SpeechGenerationService();
@@ -124,7 +138,10 @@ export function initConsultationSocket(io: Server) {
         });
 
         await dashboardEvents.recordStatus(consultationId, userId, 'Listening...');
-        await redisPublisher.publish('sehat:consultation:events', JSON.stringify({ consultationId, event: 'consultation_started', language, status: 'active', timestamp: new Date().toISOString(), videoSessionId: videoSession.id }));
+        await publishConsultationEvent(
+          redisPublisher,
+          JSON.stringify({ consultationId, event: 'consultation_started', language, status: 'active', timestamp: new Date().toISOString(), videoSessionId: videoSession.id }),
+        );
 
         console.log(`[SOCKET] Consultation started: ${consultationId}`);
       } catch (error) {
@@ -229,7 +246,10 @@ export function initConsultationSocket(io: Server) {
           consultationId,
           timestamp: new Date(),
         });
-        await redisPublisher.publish('sehat:consultation:events', JSON.stringify({ consultationId, event: 'consultation_completed', timestamp: new Date().toISOString() }));
+        await publishConsultationEvent(
+          redisPublisher,
+          JSON.stringify({ consultationId, event: 'consultation_completed', timestamp: new Date().toISOString() }),
+        );
 
         activeSessions.delete(consultationId);
         socket.leave(consultationId);
@@ -507,8 +527,8 @@ async function processAudioBuffer(
       language: sttResult.language,
     });
 
-    await redisPublisher.publish(
-      'sehat:consultation:events',
+    await publishConsultationEvent(
+      redisPublisher,
       JSON.stringify({
         consultationId,
         event: 'transcript_received',
@@ -517,7 +537,7 @@ async function processAudioBuffer(
         language: sttResult.language,
         confidence: sttResult.confidence,
         timestamp: new Date().toISOString(),
-      })
+      }),
     );
     await dashboardEvents.recordEvent(consultationId, session.userId, 'transcript_received', {
       text: sttResult.transcript,
@@ -581,14 +601,14 @@ async function processAudioBuffer(
         emergencyId: emergencyAlert.id,
       });
       await dashboardEvents.recordStatus(consultationId, session.userId, 'Emergency escalation detected');
-      await redisPublisher.publish(
-        'sehat:consultation:events',
+      await publishConsultationEvent(
+        redisPublisher,
         JSON.stringify({
           consultationId,
           event: 'emergency_detected',
           message: orchestrationResult.emergencyMessage,
           timestamp: new Date().toISOString(),
-        })
+        }),
       );
     }
 
@@ -611,8 +631,8 @@ async function processAudioBuffer(
       recommendations: orchestrationResult.recommendations,
       nextAction: orchestrationResult.nextAction,
     });
-    await redisPublisher.publish(
-      'sehat:consultation:events',
+    await publishConsultationEvent(
+      redisPublisher,
       JSON.stringify({
         consultationId,
         event: 'ai_response',
@@ -620,7 +640,7 @@ async function processAudioBuffer(
         riskLevel: orchestrationResult.riskAssessment?.level,
         nextAction: orchestrationResult.nextAction,
         timestamp: new Date().toISOString(),
-      })
+      }),
     );
 
     await dashboardEvents.recordStatus(consultationId, session.userId, 'Preparing Health Summary...');

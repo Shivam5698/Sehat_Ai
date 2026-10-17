@@ -15,18 +15,27 @@ export async function endConsultation(req: AuthRequest, res: Response) {
   if (!consultationId) return res.status(400).json({ ok: false, message: 'Missing consultationId' });
 
   const userId = req.user.sub;
-  const result = await prisma.consultation.updateMany({
+  const session = await prisma.consultation.findFirst({
     where: { id: consultationId, userId },
-    data: { status: 'ended', endedAt: new Date() },
   });
-  if (result.count === 0) {
+  if (!session) {
     return res.status(404).json({ ok: false, message: 'Consultation not found' });
   }
 
-  const session = await prisma.consultation.findUnique({
-    where: { id: consultationId },
+  await prisma.consultation.updateMany({
+    where: { id: consultationId, userId, endedAt: null },
+    data: { status: 'ended', endedAt: new Date() },
   });
-  res.json({ ok: true, session });
+  if (session.endedAt !== null) {
+    await prisma.consultation.updateMany({
+      where: { id: consultationId, userId },
+      data: { status: 'ended' },
+    });
+  }
+  const updatedSession = await prisma.consultation.findFirst({
+    where: { id: consultationId, userId },
+  });
+  return res.json({ ok: true, session: updatedSession });
 }
 
 export async function listSessions(req: Request, res: Response) {
@@ -46,4 +55,30 @@ export async function getSession(req: AuthRequest, res: Response) {
   }
 
   res.json({ ok: true, session });
+}
+
+export async function getSessionMessages(req: AuthRequest, res: Response) {
+  const { id } = req.params;
+  const consultation = await prisma.consultation.findFirst({
+    where: { id, userId: req.user.sub },
+    select: { id: true },
+  });
+  if (!consultation) {
+    return res.status(404).json({ ok: false, message: 'Consultation not found' });
+  }
+
+  const transcripts = await prisma.transcript.findMany({
+    where: {
+      consultationId: id,
+      speaker: { in: ['patient', 'ai'] },
+    },
+    select: { id: true, speaker: true, text: true, createdAt: true },
+    orderBy: { createdAt: 'asc' },
+  });
+  const messages = transcripts.map((transcript) => ({
+    ...transcript,
+    speaker: transcript.speaker as 'patient' | 'ai',
+  }));
+
+  return res.json({ ok: true, messages });
 }
