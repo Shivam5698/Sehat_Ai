@@ -400,6 +400,19 @@ for (const adapter of adapterContracts) {
     const result = await adapter.invoke(`${adapter.name}-invalid-${Date.now()}`);
     assert.deepEqual(result, { ok: false, error: 'invalid_output' });
   });
+
+  test(`${adapter.name} adapter maps malformed JSON to invalid_output`, async (context) => {
+    context.mock.method(globalThis, 'fetch', async (input: string | URL | Request) => {
+      const url = String(input);
+      if (adapter.initEndpoint && url.endsWith(adapter.initEndpoint)) {
+        return Response.json({ success: true });
+      }
+      return new Response('not-json', { status: 200 });
+    });
+
+    const result = await adapter.invoke(`${adapter.name}-malformed-${Date.now()}`);
+    assert.deepEqual(result, { ok: false, error: 'invalid_output' });
+  });
 }
 
 test('orchestrator happy path with successful adapters is not degraded', async () => {
@@ -423,7 +436,7 @@ test('orchestrator happy path with successful adapters is not degraded', async (
   assert.ok(result.agentsInvoked.every((agent) => agent.ok));
 });
 
-test('POST /api/ai-doctor/message rejects invalid message values with 400', async () => {
+test('POST /api/ai-doctor/message rejects invalid message values with 400', async (context) => {
   const app = express();
   app.use(express.json());
   app.use('/api/ai-doctor', aiDoctorRouter);
@@ -435,26 +448,32 @@ test('POST /api/ai-doctor/message rejects invalid message values with 400', asyn
     const address = server.address();
     assert(address && typeof address !== 'string');
     const token = jwt.sign({ sub: 'message-validation-user' }, config.jwtSecret);
-    const invalidMessages: unknown[] = ['', 'x'.repeat(2500), 42];
+    const invalidMessages: Array<{ label: string; message: unknown }> = [
+      { label: 'empty message', message: '' },
+      { label: '2500-character message', message: 'x'.repeat(2500) },
+      { label: 'non-string message', message: 42 },
+    ];
 
-    for (const message of invalidMessages) {
-      const response = await fetch(
-        `http://127.0.0.1:${address.port}/api/ai-doctor/message`,
-        {
-          method: 'POST',
-          headers: {
-            authorization: `Bearer ${token}`,
-            'content-type': 'application/json',
+    for (const { label, message } of invalidMessages) {
+      await context.test(label, async () => {
+        const response = await fetch(
+          `http://127.0.0.1:${address.port}/api/ai-doctor/message`,
+          {
+            method: 'POST',
+            headers: {
+              authorization: `Bearer ${token}`,
+              'content-type': 'application/json',
+            },
+            body: JSON.stringify({
+              consultationId: 'validation-only',
+              message,
+              language: 'en',
+            }),
           },
-          body: JSON.stringify({
-            consultationId: 'validation-only',
-            message,
-            language: 'en',
-          }),
-        },
-      );
-      assert.equal(response.status, 400);
-      assert.equal((await response.json() as { ok: boolean }).ok, false);
+        );
+        assert.equal(response.status, 400);
+        assert.equal((await response.json() as { ok: boolean }).ok, false);
+      });
     }
   } finally {
     server.close();
