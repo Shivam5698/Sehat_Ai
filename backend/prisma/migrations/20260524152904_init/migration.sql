@@ -73,7 +73,7 @@ CREATE TABLE "Appointment" (
     "consultationId" TEXT NOT NULL,
     "hospitalId" TEXT,
     "scheduledFor" DATETIME NOT NULL,
-    "status" TEXT NOT NULL DEFAULT 'booked',
+    "status" TEXT NOT NULL DEFAULT 'suggested',
     "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT "Appointment_consultationId_fkey" FOREIGN KEY ("consultationId") REFERENCES "Consultation" ("id") ON DELETE RESTRICT ON UPDATE CASCADE
 );

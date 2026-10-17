@@ -11,7 +11,7 @@ export const Route = createFileRoute("/consult")({
   head: () => ({
     meta: [
       { title: "Consult — Hospitals, Doctors & Appointments | Sehat AI" },
-      { name: "description", content: "AI-matched hospitals, specialists, and appointments — booked autonomously." },
+      { name: "description", content: "AI-matched hospitals, specialists, and appointment suggestions for your consideration." },
       { property: "og:title", content: "Consult — Sehat AI" },
       { property: "og:description", content: "Autonomous hospital matching and appointment booking." },
     ],

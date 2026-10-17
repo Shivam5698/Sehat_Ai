@@ -75,7 +75,7 @@ function ReportsPage() {
 
             <Section icon={FileText} title="Escalation Details">
               <div className="rounded-2xl bg-mint border border-border p-4 text-sm">
-                Appointment auto-booked at <strong>City Care Hospital</strong> with <strong>Dr. Maria Khan</strong> today at <strong>3:30 PM</strong>. Estimated wait 12 minutes. Patient will receive SMS confirmation.
+                Suggested next step: contact your preferred hospital to arrange an appointment.
               </div>
             </Section>
           </div>

@@ -161,7 +161,7 @@ function HomePage() {
               style={{ top: "38%", right: "-10%" }} />
             <FloatingCard icon={Hospital} title="Hospital Matched" value="City Care · 2.1 km" delay={0.8}
               style={{ bottom: "20%", left: "-10%" }} />
-            <FloatingCard icon={CalendarCheck} title="Appointment Booked" value="Today · 3:30 PM" delay={1.1}
+            <FloatingCard icon={CalendarCheck} title="Appointment Suggestion" value="Choose a time with your provider" delay={1.1}
               style={{ bottom: "-2%", right: "-6%" }} />
           </div>
         </div>
@@ -367,7 +367,7 @@ function HomePage() {
             
             <h2 className="font-display text-3xl md:text-5xl font-bold relative z-10">Ready to consult your AI doctor?</h2>
             <p className="mt-3 text-primary-foreground/90 max-w-xl mx-auto relative z-10">
-              Get a real-time assessment, recommended hospital, booked appointment and AI report — in minutes.
+              Get a real-time assessment, recommended hospital, appointment suggestions and an AI report — in minutes.
             </p>
             <div className="mt-7 flex flex-wrap justify-center gap-3 relative z-10">
               <Link to="/ai-doctor">
