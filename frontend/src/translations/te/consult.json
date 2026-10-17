@@ -1,0 +1,19 @@
+{
+  "eyebrow": "Autonomous Care",
+  "title": "AI is finding your best care, right now",
+  "subtitle": "Hospitals, doctors and appointments — all matched and booked by intelligent agents.",
+  "nearestHospitals": "Nearest Hospitals",
+  "recommendedDoctors": "Recommended Doctors",
+  "bookNow": "Book Now",
+  "viewDetails": "View Details",
+  "activities": [
+    "AI searching nearest hospitals…",
+    "AI checking real-time appointment slots…",
+    "AI matching specialist to your symptoms…",
+    "AI confirming insurance and pricing…",
+    "AI booking appointment automatically…"
+  ],
+  "emergency": "Emergency",
+  "bookingConfirmation": "Booking Confirmation",
+  "confirm": "Confirm"
+}

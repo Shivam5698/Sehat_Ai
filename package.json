@@ -1,0 +1,15 @@
+﻿{
+  "name": "sehat-ai",
+  "private": true,
+  "workspaces": ["frontend", "backend", "ai"],
+  "scripts": {
+    "dev:frontend": "npm --prefix frontend run dev",
+    "dev:backend": "npm --prefix backend run dev",
+    "dev": "npm run dev:frontend",
+    "build:frontend": "npm --prefix frontend run build",
+    "build:backend": "npm --prefix backend run build",
+    "build": "npm run build:frontend && npm run build:backend",
+    "start": "npm --prefix backend run start",
+    "lint": "npm --prefix frontend run lint"
+  }
+}

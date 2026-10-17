@@ -1,0 +1,29 @@
+{
+  "hero": {
+    "title1": "Talk to an AI Doctor",
+    "title2": "in Real-Time",
+    "sub": "Talk to a friendly AI doctor in your language.",
+    "ctaStart": "Start Consultation",
+    "ctaEmergency": "Emergency Help"
+  },
+  "features": [
+    "Real-Time AI Video Consultation",
+    "Voice + Text AI Conversation",
+    "Symptom Understanding",
+    "Risk Assessment",
+    "Hospital Recommendation",
+    "Appointment Booking",
+    "Medical Report Generation",
+    "Multilingual Support",
+    "Real-Time Dashboard Monitoring"
+  ],
+  "steps": [
+    "Talk to AI Doctor",
+    "Describe Symptoms",
+    "AI Understands Your Condition",
+    "Get Risk Assessment",
+    "Find Nearby Hospital & Doctor",
+    "Book Appointment Instantly",
+    "Receive AI Medical Report"
+  ]
+}

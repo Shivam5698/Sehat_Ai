@@ -1,0 +1,46 @@
+{
+  "eyebrow": "Contact",
+  "title": "We're here, around the clock",
+  "subtitle": "Whether it's an emergency or a question — reach us anytime.",
+  "cards": {
+    "callTitle": "Call us",
+    "callText": "+1 (800) 555-CARE",
+    "emailTitle": "Email",
+    "emailText": "support@sehatai.ai",
+    "officeTitle": "Office",
+    "officeText": "Bengaluru, India · Remote-first"
+  },
+  "form": {
+    "title": "Send us a message",
+    "name": "Name",
+    "namePlaceholder": "Your name",
+    "email": "Email",
+    "emailPlaceholder": "you@email.com",
+    "password": "Password",
+    "passwordPlaceholder": "",
+    "message": "Message",
+    "submit": "Send Message"
+  },
+  "faq": {
+    "eyebrow": "FAQ",
+    "title": "Frequently Asked Questions"
+  },
+  "faqs": [
+    {
+      "q": "Is Sehat AI a replacement for a real doctor?",
+      "a": "No — Sehat AI assists triage, recommendations and reporting. Critical care is always escalated to licensed physicians."
+    },
+    {
+      "q": "Which languages are supported?",
+      "a": "English, Hindi, Urdu, Bengali, Tamil, Telugu — more languages are being added regularly."
+    },
+    {
+      "q": "How is my health data protected?",
+      "a": "All data is encrypted and processed under medical-grade privacy standards."
+    },
+    {
+      "q": "Can Sehat AI book actual hospital appointments?",
+      "a": "Yes — our Appointment Agent integrates with partner hospitals to book real slots."
+    }
+  ]
+}

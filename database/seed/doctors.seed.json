@@ -1,0 +1,14 @@
+[
+  {
+    "name": "Dr. Aisha Khan",
+    "specialty": "Cardiology",
+    "hospitalName": "Sehat General Hospital",
+    "contact": "+91-8899001122"
+  },
+  {
+    "name": "Dr. Ravi Sinha",
+    "specialty": "General Medicine",
+    "hospitalName": "MediCare Multispecialty",
+    "contact": "+91-9988007766"
+  }
+]
