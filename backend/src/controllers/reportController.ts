@@ -41,6 +41,7 @@ export async function generateReport(req: Request, res: Response) {
     const report = await prisma.medicalReport.create({
       data: {
         consultationId,
+        title: 'Clinical Summary',
         summary: reportContent,
       },
     });
@@ -84,7 +85,7 @@ export async function getReport(req: Request, res: Response) {
       },
     });
 
-    if (!report || report.consultation.userId !== userId) {
+    if (!report || !report.consultation || report.consultation.userId !== userId) {
       return res.status(403).json({
         ok: false,
         message: 'Unauthorized',
@@ -164,7 +165,7 @@ export async function deleteReport(req: Request, res: Response) {
       },
     });
 
-    if (!report || report.consultation.userId !== userId) {
+    if (!report || !report.consultation || report.consultation.userId !== userId) {
       return res.status(403).json({
         ok: false,
         message: 'Unauthorized',
@@ -210,7 +211,7 @@ export async function downloadReport(req: Request, res: Response) {
       },
     });
 
-    if (!report || report.consultation.userId !== userId) {
+    if (!report || !report.consultation || report.consultation.userId !== userId) {
       return res.status(403).json({
         ok: false,
         message: 'Unauthorized',

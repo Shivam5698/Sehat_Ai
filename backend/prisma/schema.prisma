@@ -8,41 +8,48 @@ datasource db {
 }
 
 model User {
-  id        String   @id @default(uuid())
-  email     String   @unique
-  name      String?
-  age       Int?
-  gender    String?
-  language  String   @default("en")
-  phone     String?  @unique
-  password  String
-  role      String   @default("patient")
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  consultations Consultation[]
+  id             String          @id @default(uuid())
+  email          String          @unique
+  name           String?
+  age            Int?
+  gender         String?
+  language       String          @default("en")
+  phone          String?         @unique
+  password       String
+  role           String          @default("patient")
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+  consultations  Consultation[]
+  patientProfile PatientProfile?
+  auditLogs      AuditLog[]
 }
 
 model Consultation {
-  id           String   @id @default(uuid())
-  userId       String
-  user         User     @relation(fields: [userId], references: [id])
-  symptomsText String?
-  severity     String?
-  emergencyLevel String? @default("normal")
-  transcript   String?
-  reportUrl    String?
-  status       String   @default("initialized")
-  language     String   @default("en")
-  startedAt    DateTime?
-  endedAt      DateTime?
-  transcripts  Transcript[]
-  symptoms     Symptom[]
-  risk         RiskAssessment?
-  appointments Appointment[]
-  reports      Report[]
-  agentLogs    AgentLog[]
+  id             String          @id @default(uuid())
+  userId         String
+  user           User            @relation(fields: [userId], references: [id])
+  symptomsText   String?
+  severity       String?
+  emergencyLevel String?        @default("normal")
+  transcript     String?
+  reportUrl      String?
+  status         String          @default("initialized")
+  language       String          @default("en")
+  startedAt      DateTime?
+  endedAt        DateTime?
+  transcripts    Transcript[]
+  symptoms       Symptom[]
+  risk           RiskAssessment?
+  appointments   Appointment[]
+  reports        Report[]
+  agentLogs      AgentLog[]
   emergencyEvents EmergencyEvent[]
-  createdAt    DateTime @default(now())
+  safetyAlerts   SafetyAlert[]
+  medicalReports MedicalReport[]
+  videoSessions  VideoSession[]
+  riskScores     RiskScore[]
+  emergencyCases EmergencyCase[]
+  createdAt      DateTime        @default(now())
 }
 
 model Transcript {
@@ -150,25 +157,25 @@ model PatientProfile {
 }
 
 model SafetyAlert {
-  id             String   @id @default(uuid())
+  id             String        @id @default(uuid())
   consultationId String?
   consultation   Consultation? @relation(fields: [consultationId], references: [id])
   type           String
   message        String
   severity       String
-  status         String   @default("open")
-  createdAt      DateTime @default(now())
+  status         String        @default("open")
+  createdAt      DateTime      @default(now())
 }
 
 model MedicalReport {
-  id             String   @id @default(uuid())
+  id             String        @id @default(uuid())
   consultationId String?
   consultation   Consultation? @relation(fields: [consultationId], references: [id])
   title          String
   summary        String
   riskLevel      String?
   pdfUrl         String?
-  createdAt      DateTime @default(now())
+  createdAt      DateTime      @default(now())
 }
 
 model AuditLog {
@@ -181,33 +188,33 @@ model AuditLog {
 }
 
 model VideoSession {
-  id             String   @id @default(uuid())
+  id             String        @id @default(uuid())
   consultationId String?
   consultation   Consultation? @relation(fields: [consultationId], references: [id])
   sessionUrl     String?
-  status         String   @default("pending")
+  status         String        @default("pending")
   startedAt      DateTime?
   endedAt        DateTime?
-  createdAt      DateTime @default(now())
+  createdAt      DateTime      @default(now())
 }
 
 model RiskScore {
-  id             String   @id @default(uuid())
-  consultationId String   @unique
+  id             String       @id @default(uuid())
+  consultationId String       @unique
   consultation   Consultation @relation(fields: [consultationId], references: [id])
   score          Float
   level          String
   confidence     Float
   details        String?
-  createdAt      DateTime @default(now())
+  createdAt      DateTime     @default(now())
 }
 
 model EmergencyCase {
-  id             String   @id @default(uuid())
+  id             String        @id @default(uuid())
   consultationId String?
   consultation   Consultation? @relation(fields: [consultationId], references: [id])
   description    String
   severity       String
   outcome        String?
-  reportedAt     DateTime @default(now())
+  reportedAt     DateTime      @default(now())
 }
