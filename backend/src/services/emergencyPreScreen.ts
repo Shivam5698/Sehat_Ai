@@ -18,55 +18,94 @@ const emergencyRules: Array<{ type: EmergencyType; phrases: RegExp[] }> = [
   {
     type: 'chest_pain_breathlessness',
     phrases: [
-      /chest pain.{0,80}(shortness of breath|breathlessness|breathing difficulty|difficulty breathing)/i,
-      /(shortness of breath|breathlessness|breathing difficulty|difficulty breathing).{0,80}chest pain/i,
+      /\bchest pain\b/,
+      /\bchest pressure\b/,
+      /\bchest tightness\b/,
+      /\b(?:cannot|cant|unable to|struggling to|trouble|difficulty) breathe\b/,
+      /\b(?:trouble|difficulty) breathing\b/,
+      /\bbreathlessness\b/,
+      /\bbreathing difficulty\b/,
+      /\bshortness of breath\b/,
+      /\bshort of breath\b/,
+      /\bgasping\b/,
+      /\bnot breathing\b/,
+      /\bsaans nahi aa rahi\b/,
+      /\bseene me dard\b/,
     ],
   },
   {
     type: 'stroke_signs',
     phrases: [
-      /face drooping|facial drooping|drooping face/i,
-      /slurred speech|speech is slurred|difficulty speaking suddenly/i,
+      /\b(?:face drooping|facial drooping|drooping face)\b/,
+      /\bslurred speech\b/,
+      /\bone side (?:is )?weak\b/,
+      /\bweakness on one side\b/,
+      /\bdifficulty speaking suddenly\b/,
     ],
   },
   {
     type: 'heavy_bleeding',
-    phrases: [/severe bleeding|heavy bleeding|bleeding heavily|bleeding that will not stop/i],
+    phrases: [
+      /\b(?:severe|heavy) bleeding\b/,
+      /\bbleeding heavily\b/,
+      /\bbleeding that will not stop\b/,
+    ],
   },
   {
     type: 'unconsciousness',
-    phrases: [/unconscious|loss of consciousness|not waking up|cannot be woken/i],
+    phrases: [
+      /\bunconscious\b/,
+      /\bunresponsive\b/,
+      /\bloss of consciousness\b/,
+      /\bnot waking up\b/,
+      /\bcannot be woken\b/,
+      /\bnot responding\b/,
+    ],
   },
   {
     type: 'poisoning_overdose',
-    phrases: [/poisoning|poisoned|overdose|took too many (pills|tablets|medications)/i],
+    phrases: [
+      /\bpoisoning\b/,
+      /\bpoisoned\b/,
+      /\boverdose\b/,
+      /\btook too many (?:pills|tablets|medications)\b/,
+    ],
   },
   {
     type: 'self_harm',
     phrases: [
-      /(?:want to|going to|plan to|might) (?:kill|hurt|harm) myself/i,
-      /(?:suicidal|suicide plan|self[- ]harm|end my life)/i,
+      /\bwant to die\b/,
+      /\b(?:want to|going to|plan to|might) (?:kill|hurt|harm) myself\b/,
+      /\bkill myself\b/,
+      /\bend my life\b/,
+      /\bsuicide\b/,
+      /\bself harm\b/,
     ],
   },
 ];
 
+function normalizeText(text: string): string {
+  return text
+    .toLowerCase()
+    .replace(/[’‘]/g, "'")
+    .replace(/'/g, '')
+    .replace(/[^\p{L}\p{N}\s]/gu, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 export function emergencyPreScreen(text: string): EmergencyPreScreenResult {
+  const normalizedText = normalizeText(text);
+
   for (const rule of emergencyRules) {
-    if (!rule.phrases.some((phrase) => phrase.test(text))) continue;
+    if (!rule.phrases.some((phrase) => phrase.test(normalizedText))) continue;
 
-    if (rule.type === 'self_harm') {
-      return {
-        detected: true,
-        type: rule.type,
-        message: `I'm sorry you're going through this. If you may hurt yourself now, call ${emergencyNumber} or go to the nearest emergency department. If possible, stay with someone you trust and ask them to help you get urgent support.`,
-      };
-    }
+    const message =
+      rule.type === 'self_harm'
+        ? `Call ${emergencyNumber} now. If you may hurt yourself, contact emergency services now or go to the nearest emergency department. If possible, stay with someone you trust and ask them to help you get urgent support.`
+        : `Call ${emergencyNumber} now. Contact emergency services now or go to the nearest emergency department. Do not drive yourself if you feel unwell.`;
 
-    return {
-      detected: true,
-      type: rule.type,
-      message: `This may need urgent medical attention. Call ${emergencyNumber} now or go to the nearest emergency department. Do not drive yourself if you feel unwell.`,
-    };
+    return { detected: true, type: rule.type, message };
   }
 
   return { detected: false };

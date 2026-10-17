@@ -128,6 +128,7 @@ export async function orchestrateAgents(
     const composition = composeReply({ emergency, degraded: false });
     return {
       ...composition,
+      reply: `${emergency.message} ${composition.reply}`,
       emergency: true,
       emergencyType: emergency.type,
       emergencyMessage: emergency.message,

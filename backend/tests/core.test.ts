@@ -14,6 +14,7 @@ const [
   { prisma },
   { orchestrateAgents },
   { consultationRouter },
+  { emergencyPreScreen },
 ] = await Promise.all([
     import('../src/controllers/authController.js'),
     import('../src/middleware/auth.js'),
@@ -21,6 +22,7 @@ const [
     import('../src/database/client.js'),
     import('../src/services/agentOrchestrator.js'),
     import('../src/routes/consultation.js'),
+    import('../src/services/emergencyPreScreen.js'),
   ]);
 
 function responseMock() {
@@ -156,7 +158,49 @@ test('emergency prescreen responds without invoking agents', async () => {
 
   assert.equal(result.emergency, true);
   assert.equal(result.degraded, false);
+  assert.match(result.reply, /^Call 112 now\./);
+  assert.match(result.reply, /emergency services now/);
+  assert.match(result.emergencyMessage ?? '', /112/);
   assert.deepEqual(result.agentsInvoked, []);
+});
+
+test('emergency prescreen recognizes emergency phrases and rejects mild symptoms', async (context) => {
+  const emergencies = [
+    'chest pain and I cannot breathe',
+    "I can't breathe",
+    'I can’t breathe!',
+    'cant breathe',
+    'unable to breathe',
+    'struggling to breathe',
+    'trouble breathing',
+    'difficulty breathing',
+    'shortness of breath',
+    'short of breath',
+    'gasping',
+    'chest pressure',
+    'chest tightness',
+    'face drooping',
+    'slurred speech',
+    'one side weak',
+    'heavy bleeding',
+    'unresponsive and not breathing',
+    'overdose',
+    'I want to die',
+    'seene me dard',
+    'saans nahi aa rahi',
+  ];
+
+  for (const phrase of emergencies) {
+    await context.test(phrase, () => {
+      assert.equal(emergencyPreScreen(phrase).detected, true);
+    });
+  }
+
+  for (const phrase of ['cough and mild fever', 'mild headache', 'sore throat']) {
+    await context.test(`${phrase} is not an emergency`, () => {
+      assert.deepEqual(emergencyPreScreen(phrase), { detected: false });
+    });
+  }
 });
 
 test('orchestrator marks degraded when an adapter fails', async () => {
