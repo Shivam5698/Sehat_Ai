@@ -1,6 +1,8 @@
 import axios from 'axios';
 import { ConversationContext, Symptom, RiskAssessment } from '../types/consultation.js';
 import { prisma } from '../database/client.js';
+import { orchestrateAgents } from './agentOrchestrator.js';
+import type { SeverityRiskLevel } from './agents/severityAdapter.js';
 
 export interface AgentResponse {
   agent: string;
@@ -11,7 +13,7 @@ export interface AgentResponse {
 
 export interface OrchestrationResult {
   symptoms: Symptom[];
-  riskAssessment: RiskAssessment;
+  riskAssessment?: RiskAssessment;
   safetyIssues?: string[];
   recommendations?: string[];
   nextAction?: string;
@@ -19,131 +21,69 @@ export interface OrchestrationResult {
   emergencyMessage?: string;
 }
 
-interface OrchestratorWorkflowResult {
-  workflowId: string;
-  sessionId: string;
-  conversationId: string;
-  language: string;
-  workflowStatus: string;
-  activeAgent?: string;
-  workflowHistory?: unknown[];
-  response?: {
-    summary?: string;
-    symptoms?: Array<Symptom | string>;
-    risk?: string;
-    riskScore?: number;
-    confidence?: string;
-    recommendation?: string;
-    recommendations?: string[];
-    nextAction?: string;
-    emergencyMessage?: string;
-    safetyIssues?: string[];
-    metadata?: Record<string, unknown>;
-  };
-  emergencyDetected?: boolean;
-}
-
 export class AIOrchestratorService {
   private aiServiceUrl: string;
-  private agentResponses: Map<string, AgentResponse[]> = new Map();
 
   constructor(aiServiceUrl: string = 'http://localhost:8000') {
     this.aiServiceUrl = aiServiceUrl.replace(/\/$/, '');
   }
 
   async orchestrateConsultation(context: ConversationContext): Promise<OrchestrationResult> {
-    try {
-      const requestPayload = {
-        sessionId: context.consultationId,
-        conversationId: context.consultationId,
-        language: context.language,
-        input:
-          context.history.length > 0
-            ? context.history.map((entry) => `${entry.speaker}: ${entry.text}`).join('\n')
-            : context.consultationId,
-        metadata: {
-          conversationHistory: context.history.map((entry) => ({
-            speaker: entry.speaker,
-            text: entry.text,
-            timestamp: entry.timestamp,
-          })),
-        },
-      };
-
-      const response = await axios.post<OrchestratorWorkflowResult>(`${this.aiServiceUrl}/process`, requestPayload, {
-        timeout: 15000,
-      });
-
-      const workflowResult = response.data;
-      await this.storeAgentLogs(context.consultationId, {
-        request: requestPayload,
-        workflowResult,
-      });
-
-      return this.mapWorkflowResult(workflowResult);
-    } catch (error) {
-      console.error('Orchestration Error:', error);
-      throw error;
+    const patientTurn = [...context.history]
+      .reverse()
+      .find((entry) => entry.speaker === 'patient');
+    if (!patientTurn) {
+      throw new Error('No patient message is available for orchestration');
     }
-  }
-
-  private mapWorkflowResult(workflowResult: OrchestratorWorkflowResult): OrchestrationResult {
-    const response = workflowResult.response || {};
-    const symptoms: Symptom[] = Array.isArray(response.symptoms)
-      ? response.symptoms.map((value) => {
-          if (typeof value === 'string') {
-            return { id: '', name: value };
-          }
-          return {
-            id: (value as Symptom).id || '',
-            name: (value as Symptom).name || String(value),
-            duration: (value as Symptom).duration,
-            severity: (value as Symptom).severity,
-            reported: (value as Symptom).reported,
-          };
-        })
-      : [];
-
-    const riskAssessment: RiskAssessment = {
-      riskScore: typeof response.riskScore === 'number' ? response.riskScore : 0,
-      level: typeof response.risk === 'string' ? (response.risk as RiskAssessment['level']) : 'low',
-      confidence: response.confidence ? Number(response.confidence) || 0 : 0,
-      details:
-        typeof response?.metadata?.details === 'string'
-          ? (response.metadata.details as string)
-          : undefined,
-    };
-
-    const recommendations = Array.isArray(response.recommendations)
-      ? response.recommendations
-      : response.recommendation
-      ? [response.recommendation]
-      : [];
+    const result = await orchestrateAgents({
+      sessionId: context.consultationId,
+      message: patientTurn.text,
+      language: context.language,
+      history: context.history
+        .filter((entry) => entry !== patientTurn)
+        .slice(-6)
+        .map((entry) => ({ speaker: entry.speaker, text: entry.text })),
+    });
+    const symptoms: Symptom[] =
+      result.symptom?.data.summary.primarySymptoms.map((name) => ({
+        id: '',
+        name,
+        duration: result.symptom?.data.summary.duration,
+        severity: result.symptom?.data.summary.severityHint,
+      })) ?? [];
 
     return {
       symptoms,
-      riskAssessment,
-      safetyIssues: Array.isArray(response.safetyIssues) ? response.safetyIssues : [],
-      recommendations,
-      nextAction:
-        response.nextAction ??
-        (workflowResult.emergencyDetected ? 'emergency-escalation' : 'appointment-booking'),
-      shouldEscalate: workflowResult.emergencyDetected ?? false,
-      emergencyMessage: response.emergencyMessage,
+      ...(result.severity
+        ? {
+            riskAssessment: {
+              riskScore: result.severity.riskScore,
+              level: this.toRiskLevel(result.severity.riskLevel),
+              confidence: result.severity.confidence,
+              details: result.severity.clinicalSummary,
+            },
+          }
+        : {}),
+      safetyIssues: result.safety?.safetyWarnings ?? [],
+      recommendations: result.safety?.approvedRecommendations ?? [],
+      nextAction: result.emergency
+        ? 'seek-emergency-care'
+        : 'continue',
+      shouldEscalate: result.emergency || result.safety?.escalationRequired === true,
+      emergencyMessage: result.emergencyMessage,
     };
   }
 
-  private async storeAgentLogs(consultationId: string, data: unknown): Promise<void> {
-    try {
-      await prisma.agentLog.create({
-        data: {
-          consultationId,
-          agentName: 'orchestrator',
-          payload: JSON.stringify(data),
-        },
-      });
-    } catch (error) {
-      console.error('Store Agent Logs Error:', error);
+  private toRiskLevel(level: SeverityRiskLevel): RiskAssessment['level'] {
+    switch (level) {
+      case 'LOW':
+        return 'low';
+      case 'MODERATE':
+        return 'medium';
+      case 'HIGH':
+        return 'high';
+      case 'EMERGENCY':
+        return 'critical';
     }
   }
 

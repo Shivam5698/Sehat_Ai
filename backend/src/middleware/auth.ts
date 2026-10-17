@@ -6,15 +6,24 @@ export interface AuthRequest extends Request {
   user?: any;
 }
 
-export function requireAuth(req: AuthRequest, res: Response, next: NextFunction) {
+export function requireAuth(
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction,
+  onUnauthorized?: (response: Response) => void,
+) {
+  const unauthorized = (message: string) => {
+    if (onUnauthorized) return onUnauthorized(res);
+    return res.status(401).json({ ok: false, message });
+  };
   const auth = req.headers.authorization;
-  if (!auth) return res.status(401).json({ ok: false, message: 'Missing token' });
+  if (!auth) return unauthorized('Missing token');
   const token = auth.replace('Bearer ', '');
   try {
     const payload: any = jwt.verify(token, config.jwtSecret);
     req.user = payload;
     next();
-  } catch (err) {
-    res.status(401).json({ ok: false, message: 'Invalid token' });
+  } catch {
+    unauthorized('Invalid token');
   }
 }

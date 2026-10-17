@@ -21,9 +21,10 @@ export interface AgentOrchestratorInput {
   sessionId: string;
   message: string;
   language: string;
-  duration: string;
-  age: number;
-  gender: 'male' | 'female' | 'other';
+  history?: Array<{ speaker: string; text: string }>;
+  duration?: string;
+  age?: number;
+  gender?: 'male' | 'female' | 'other';
 }
 
 export interface AgentInvocation {
@@ -38,6 +39,7 @@ export interface AgentOrchestrationResult {
   followUpQuestion?: string;
   emergency: boolean;
   emergencyType?: string;
+  emergencyMessage?: string;
   degraded: boolean;
   agentsInvoked: AgentInvocation[];
   symptom?: SymptomAnalysis;
@@ -103,6 +105,7 @@ export async function orchestrateAgents(
       ...composition,
       emergency: true,
       emergencyType: emergency.type,
+      emergencyMessage: emergency.message,
       degraded: false,
       agentsInvoked: [],
     };
@@ -115,7 +118,14 @@ export async function orchestrateAgents(
     () =>
       analyzeSymptoms({
         sessionId: input.sessionId,
-        message: input.message,
+        message: [
+          ...(input.history ?? []).map(
+            (turn) => `${turn.speaker}: ${turn.text}`,
+          ),
+          `patient: ${input.message}`,
+        ]
+          .join('\n')
+          .slice(-10000),
         language: input.language,
       }),
     performance.now(),
@@ -128,15 +138,38 @@ export async function orchestrateAgents(
   }
 
   const symptoms = symptomResult.data.data.summary.primarySymptoms;
+  const duration = symptomResult.data.data.summary.duration;
+  const age = input.age;
+  const gender = input.gender;
+  if (
+    duration === undefined ||
+    age === undefined ||
+    gender === undefined
+  ) {
+    agentsInvoked.push({
+      agent: 'severity',
+      ok: false,
+      latencyMs: 0,
+      error: 'unavailable',
+    });
+    agentsInvoked.push({
+      agent: 'safety',
+      ok: false,
+      latencyMs: 0,
+      error: 'unavailable',
+    });
+    return createDegradedResult(agentsInvoked, symptomResult.data);
+  }
+
   const severityResult = await invokeWithinBudget(
     'severity',
     () =>
       analyzeSeverity({
         sessionId: input.sessionId,
         symptoms,
-        duration: input.duration,
-        age: input.age,
-        gender: input.gender,
+        duration,
+        age,
+        gender,
         language: input.language,
       }),
     performance.now(),
@@ -186,10 +219,17 @@ export async function orchestrateAgents(
     safety: safetyResult.data,
     degraded: false,
   });
+  const emergencyDetected =
+    safetyResult.data.emergency ||
+    safetyResult.data.escalationLevel === 'EMERGENCY_ESCALATION' ||
+    severityResult.data.emergency ||
+    severityResult.data.riskLevel === 'EMERGENCY' ||
+    symptomResult.data.data.emergencySignals;
 
   return {
     ...composition,
-    emergency: false,
+    emergency: emergencyDetected,
+    ...(emergencyDetected ? { emergencyType: 'agent_escalation' } : {}),
     degraded: false,
     agentsInvoked,
     symptom: symptomResult.data,
@@ -204,9 +244,14 @@ function createDegradedResult(
   severity?: SeverityAnalysis,
 ): AgentOrchestrationResult {
   const composition = composeReply({ symptom, severity, degraded: true });
+  const emergency =
+    severity?.emergency === true ||
+    severity?.riskLevel === 'EMERGENCY' ||
+    symptom?.data.emergencySignals === true;
   return {
     ...composition,
-    emergency: false,
+    emergency,
+    ...(emergency ? { emergencyType: 'agent_escalation' } : {}),
     degraded: true,
     agentsInvoked,
     ...(symptom ? { symptom } : {}),
