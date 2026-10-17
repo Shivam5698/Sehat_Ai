@@ -34,6 +34,9 @@ export const config = {
   frontendUrl: process.env.FRONTEND_URL || 'http://localhost:5173',
   aiServiceUrl: process.env.AI_SERVICE_URL || 'http://localhost:8000',
   aiGatewayUrl: process.env.AI_GATEWAY_URL || process.env.AI_SERVICE_URL || 'http://localhost:8000',
+  symptomAgentUrl: process.env.SYMPTOM_AGENT_URL || 'http://localhost:5001',
+  severityAgentUrl: process.env.SEVERITY_AGENT_URL || 'http://localhost:5002',
+  safetyAgentUrl: process.env.SAFETY_AGENT_URL || 'http://localhost:5003',
   s3: {
     endpoint: process.env.S3_ENDPOINT || '',
     accessKey: process.env.S3_ACCESS_KEY || '',
