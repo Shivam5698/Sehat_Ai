@@ -113,11 +113,12 @@ export async function orchestrateAgents(
 
   const agentsInvoked: AgentInvocation[] = [];
   const deadline = performance.now() + TOTAL_TIMEOUT_MS;
+  const consultationId = input.sessionId;
   const symptomResult = await invokeWithinBudget(
     'symptom',
     () =>
       analyzeSymptoms({
-        sessionId: input.sessionId,
+        sessionId: consultationId,
         message: [
           ...(input.history ?? []).map(
             (turn) => `${turn.speaker}: ${turn.text}`,
@@ -165,7 +166,7 @@ export async function orchestrateAgents(
     'severity',
     () =>
       analyzeSeverity({
-        sessionId: input.sessionId,
+        sessionId: consultationId,
         symptoms,
         duration,
         age,
@@ -191,7 +192,7 @@ export async function orchestrateAgents(
     'safety',
     () =>
       evaluateSafety({
-        sessionId: input.sessionId,
+        sessionId: consultationId,
         symptoms,
         severityResult: {
           riskLevel: safetyRiskLevel,
@@ -243,7 +244,8 @@ function createDegradedResult(
   symptom?: SymptomAnalysis,
   severity?: SeverityAnalysis,
 ): AgentOrchestrationResult {
-  const composition = composeReply({ symptom, severity, degraded: true });
+  const degraded = agentsInvoked.some((agent) => !agent.ok);
+  const composition = composeReply({ symptom, severity, degraded });
   const emergency =
     severity?.emergency === true ||
     severity?.riskLevel === 'EMERGENCY' ||
@@ -252,7 +254,7 @@ function createDegradedResult(
     ...composition,
     emergency,
     ...(emergency ? { emergencyType: 'agent_escalation' } : {}),
-    degraded: true,
+    degraded,
     agentsInvoked,
     ...(symptom ? { symptom } : {}),
     ...(severity ? { severity } : {}),

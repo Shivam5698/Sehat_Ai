@@ -28,8 +28,43 @@ export type SymptomAdapterResult =
   | { ok: true; data: SymptomAnalysis }
   | { ok: false; error: 'timeout' | 'unavailable' | 'invalid_output' };
 
+const initializedSessions = new Map<string, Promise<boolean>>();
+
 function isStringArray(value: unknown): value is string[] {
   return Array.isArray(value) && value.every((item) => typeof item === 'string');
+}
+
+function initializeSession(
+  sessionId: string,
+  signal: AbortSignal,
+): Promise<boolean> {
+  const existing = initializedSessions.get(sessionId);
+  if (existing) return existing;
+
+  const initialization = fetch(
+    `${config.symptomAgentUrl.replace(/\/$/, '')}/session/start`,
+    {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-api-key': process.env.SYMP_AGENT_API_KEY ?? '',
+      },
+      body: JSON.stringify({ sessionId }),
+      signal,
+    },
+  ).then((response) => response.ok);
+
+  initializedSessions.set(sessionId, initialization);
+  void initialization.then((initialized) => {
+    if (!initialized && initializedSessions.get(sessionId) === initialization) {
+      initializedSessions.delete(sessionId);
+    }
+  }, () => {
+    if (initializedSessions.get(sessionId) === initialization) {
+      initializedSessions.delete(sessionId);
+    }
+  });
+  return initialization;
 }
 
 function isSymptomAnalysis(value: unknown): value is SymptomAnalysis {
@@ -83,6 +118,10 @@ export async function analyzeSymptoms(
   }, 6000);
 
   try {
+    if (!(await initializeSession(input.sessionId, controller.signal))) {
+      return { ok: false, error: 'unavailable' };
+    }
+
     const response = await fetch(
       `${config.symptomAgentUrl.replace(/\/$/, '')}/symptoms/analyze`,
       {
