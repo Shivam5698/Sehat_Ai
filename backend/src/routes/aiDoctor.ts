@@ -240,6 +240,22 @@ aiDoctorRouter.post(
       );
     }
 
+    if (
+      !preScreen.detected &&
+      result.degraded &&
+      result.agentsInvoked.length > 0 &&
+      result.agentsInvoked.every((agent) => !agent.ok)
+    ) {
+      return sendError(
+        response,
+        502,
+        'ai_unavailable',
+        'AI service is temporarily unavailable',
+        traceId,
+        { emergency: preScreen },
+      );
+    }
+
     await persistResult(consultation.id, input.message, language, result);
 
     const urgency = getUrgency(result);

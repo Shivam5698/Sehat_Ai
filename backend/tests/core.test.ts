@@ -436,6 +436,79 @@ test('orchestrator happy path with successful adapters is not degraded', async (
   assert.ok(result.agentsInvoked.every((agent) => agent.ok));
 });
 
+test('POST /api/ai-doctor/message returns 502 when agents are unavailable', async (context) => {
+  const consultationId = `agents-unavailable-${Date.now()}`;
+  const consultationDelegate = prisma.consultation as unknown as {
+    findFirst: (args: unknown) => Promise<unknown>;
+  };
+  const originalFindFirst = consultationDelegate.findFirst;
+  consultationDelegate.findFirst = async () => ({
+    id: consultationId,
+    language: 'en',
+    transcripts: [],
+  });
+
+  const app = express();
+  app.use(express.json());
+  app.use('/api/ai-doctor', aiDoctorRouter);
+  const server = createServer(app);
+  server.listen(0, '127.0.0.1');
+  await once(server, 'listening');
+
+  try {
+    const address = server.address();
+    assert(address && typeof address !== 'string');
+    const originalFetch = globalThis.fetch;
+    context.mock.method(
+      globalThis,
+      'fetch',
+      async (input: string | URL | Request, init?: RequestInit) => {
+        if (String(input).includes(`127.0.0.1:${address.port}`)) {
+          return originalFetch(input, init);
+        }
+        return Response.json({}, { status: 503 });
+      },
+    );
+    const token = jwt.sign({ sub: 'agents-unavailable-user' }, config.jwtSecret);
+    const response = await fetch(
+      `http://127.0.0.1:${address.port}/api/ai-doctor/message`,
+      {
+        method: 'POST',
+        headers: {
+          authorization: `Bearer ${token}`,
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify({
+          consultationId,
+          message: 'I have a mild headache',
+          language: 'en',
+        }),
+      },
+    );
+    const body = await response.json() as {
+      ok: boolean;
+      code: string;
+      message: string;
+      traceId: string;
+      emergency: { detected: boolean };
+    };
+
+    assert.equal(response.status, 502);
+    assert.deepEqual(body, {
+      ok: false,
+      code: 'ai_unavailable',
+      message: 'AI service is temporarily unavailable',
+      traceId: body.traceId,
+      emergency: { detected: false },
+    });
+    assert.ok(body.traceId.length > 0);
+  } finally {
+    server.close();
+    await once(server, 'close');
+    consultationDelegate.findFirst = originalFindFirst;
+  }
+});
+
 test('POST /api/ai-doctor/message rejects invalid message values with 400', async (context) => {
   const app = express();
   app.use(express.json());
