@@ -86,9 +86,9 @@ Sehat AI is a multi-layered, production-grade healthcare AI platform that coordi
 - **Reasoning:** Geospatial matching, capability assessment
 
 #### Appointment Agent
-- **Role:** Appointment suggestions for patient consideration
+- **Role:** Autonomous appointment booking
 - **Input:** Hospital choice, patient availability, urgency level
-- **Output:** Suggested appointment details; no booking is made
+- **Output:** Confirmed appointment slot with details
 - **Reasoning:** Schedule optimization, conflict resolution
 
 #### Report Agent

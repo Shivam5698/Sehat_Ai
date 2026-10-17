@@ -75,7 +75,7 @@ model Appointment {
   user           User?         @relation(fields: [userId], references: [id])
   consultation   Consultation? @relation(fields: [consultationId], references: [id])
   bookingTime    DateTime
-  status         String        @default("suggested")
+  status         String        @default("booked")
   createdAt      DateTime      @default(now())
 }
 
