@@ -51,6 +51,18 @@ type AgentResult<T> =
   | { ok: true; data: T }
   | { ok: false; error: 'timeout' | 'unavailable' | 'invalid_output' };
 
+export interface AgentAdapters {
+  analyzeSymptoms: typeof analyzeSymptoms;
+  analyzeSeverity: typeof analyzeSeverity;
+  evaluateSafety: typeof evaluateSafety;
+}
+
+const defaultAdapters: AgentAdapters = {
+  analyzeSymptoms,
+  analyzeSeverity,
+  evaluateSafety,
+};
+
 async function invokeWithinBudget<T>(
   agent: AgentInvocation['agent'],
   operation: () => Promise<AgentResult<T>>,
@@ -93,6 +105,7 @@ async function invokeWithinBudget<T>(
 
 export async function orchestrateAgents(
   input: AgentOrchestratorInput,
+  adapters: AgentAdapters = defaultAdapters,
 ): Promise<AgentOrchestrationResult> {
   const preScreen = emergencyPreScreen(input.message);
   if (preScreen.detected) {
@@ -117,7 +130,7 @@ export async function orchestrateAgents(
   const symptomResult = await invokeWithinBudget(
     'symptom',
     () =>
-      analyzeSymptoms({
+      adapters.analyzeSymptoms({
         sessionId: consultationId,
         message: [
           ...(input.history ?? []).map(
@@ -165,7 +178,7 @@ export async function orchestrateAgents(
   const severityResult = await invokeWithinBudget(
     'severity',
     () =>
-      analyzeSeverity({
+      adapters.analyzeSeverity({
         sessionId: consultationId,
         symptoms,
         duration,
@@ -191,7 +204,7 @@ export async function orchestrateAgents(
   const safetyResult = await invokeWithinBudget(
     'safety',
     () =>
-      evaluateSafety({
+      adapters.evaluateSafety({
         sessionId: consultationId,
         symptoms,
         severityResult: {
