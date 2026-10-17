@@ -3,6 +3,7 @@ import { Router, type NextFunction, type Response } from 'express';
 import { prisma } from '../database/client.js';
 import { AuthRequest, requireAuth } from '../middleware/auth.js';
 import { emergencyPreScreen } from '../services/emergencyPreScreen.js';
+import { asyncHandler } from './consultation.js';
 import {
   getHospitalRecommendations,
   orchestrateAgents,
@@ -35,10 +36,7 @@ function requireAiDoctorAuth(
   response: Response,
   next: NextFunction,
 ) {
-  const traceId = randomUUID();
-  requireAuth(request, response, next, () => {
-    sendError(response, 401, 'unauthenticated', 'Authentication required', traceId);
-  });
+  requireAuth(request, response, next);
 }
 
 function getUrgency(result: AgentOrchestrationResult): 'emergency' | 'urgent' | 'routine' | 'unknown' {
@@ -167,8 +165,11 @@ async function persistResult(
 aiDoctorRouter.post(
   '/message',
   requireAiDoctorAuth,
-  async (request: AuthRequest, response: Response) => {
+  asyncHandler(async (request: AuthRequest, response: Response) => {
   const traceId = randomUUID();
+  if (!request.user) {
+    return sendError(response, 401, 'unauthenticated', 'Authentication required', traceId);
+  }
   const body: unknown = request.body;
   if (
     !body ||
@@ -296,4 +297,5 @@ aiDoctorRouter.post(
       traceId,
     );
   }
-});
+  }),
+);

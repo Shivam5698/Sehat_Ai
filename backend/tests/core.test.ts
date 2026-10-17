@@ -1,16 +1,26 @@
 import assert from 'node:assert/strict';
+import { once } from 'node:events';
+import { createServer } from 'node:http';
 import { test } from 'node:test';
+import express from 'express';
 
 process.env.DATABASE_URL = 'file:./test.db';
 process.env.NODE_ENV = 'development';
 
-const [{ signup }, { requireAuth }, { getSession }, { prisma }, { orchestrateAgents }] =
-  await Promise.all([
+const [
+  { signup },
+  { requireAuth },
+  { getSession },
+  { prisma },
+  { orchestrateAgents },
+  { consultationRouter },
+] = await Promise.all([
     import('../src/controllers/authController.js'),
     import('../src/middleware/auth.js'),
     import('../src/controllers/consultationController.js'),
     import('../src/database/client.js'),
     import('../src/services/agentOrchestrator.js'),
+    import('../src/routes/consultation.js'),
   ]);
 
 function responseMock() {
@@ -58,7 +68,38 @@ test('missing authorization token returns 401', () => {
 
   assert.equal(response.statusCode, 401);
   assert.equal(nextCalled, false);
-  assert.deepEqual(response.body, { ok: false, message: 'Missing token' });
+  assert.deepEqual(response.body, {
+    ok: false,
+    code: 'unauthenticated',
+    message: 'Missing or malformed authorization header',
+  });
+});
+
+test('POST /api/consultation/start without a token returns 401', async () => {
+  const app = express();
+  app.use('/api/consultation', consultationRouter);
+  const server = createServer(app);
+  server.listen(0, '127.0.0.1');
+  await once(server, 'listening');
+
+  try {
+    const address = server.address();
+    assert(address && typeof address !== 'string');
+    const response = await fetch(
+      `http://127.0.0.1:${address.port}/api/consultation/start`,
+      { method: 'POST' },
+    );
+
+    assert.equal(response.status, 401);
+    assert.deepEqual(await response.json(), {
+      ok: false,
+      code: 'unauthenticated',
+      message: 'Missing or malformed authorization header',
+    });
+  } finally {
+    server.close();
+    await once(server, 'close');
+  }
 });
 
 test('consultation owned by another user returns 404', async (context) => {

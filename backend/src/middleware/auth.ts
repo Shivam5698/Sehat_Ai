@@ -10,20 +10,26 @@ export function requireAuth(
   req: AuthRequest,
   res: Response,
   next: NextFunction,
-  onUnauthorized?: (response: Response) => void,
 ) {
   const unauthorized = (message: string) => {
-    if (onUnauthorized) return onUnauthorized(res);
-    return res.status(401).json({ ok: false, message });
+    return res.status(401).json({
+      ok: false,
+      code: 'unauthenticated',
+      message,
+    });
   };
   const auth = req.headers.authorization;
-  if (!auth) return unauthorized('Missing token');
-  const token = auth.replace('Bearer ', '');
+  const match = typeof auth === 'string' ? /^Bearer\s+(\S+)$/i.exec(auth) : null;
+  if (!match) return unauthorized('Missing or malformed authorization header');
+
   try {
-    const payload: any = jwt.verify(token, config.jwtSecret);
+    const payload = jwt.verify(match[1], config.jwtSecret);
+    if (typeof payload === 'string' || typeof payload.sub !== 'string') {
+      return unauthorized('Invalid token');
+    }
     req.user = payload;
-    next();
+    return next();
   } catch {
-    unauthorized('Invalid token');
+    return unauthorized('Invalid or expired token');
   }
 }
