@@ -11,6 +11,9 @@ export const socketService = {
     }
 
     socket = io(SOCKET_URL, {
+      auth: (callback) => {
+        callback({ token: localStorage.getItem("token") });
+      },
       reconnection: true,
       reconnectionDelay: 1000,
       reconnectionDelayMax: 5000,

@@ -51,6 +51,10 @@ export const config = {
     region: process.env.TRUGEN_REGION || '',
   },
   frontendUrl: process.env.FRONTEND_URL || 'http://localhost:5173',
+  corsOrigins: (process.env.CORS_ORIGINS || process.env.FRONTEND_URL || '')
+    .split(',')
+    .map((origin) => origin.trim())
+    .filter(Boolean),
   aiServiceUrl: process.env.AI_SERVICE_URL || 'http://localhost:8000',
   aiGatewayUrl: process.env.AI_GATEWAY_URL || process.env.AI_SERVICE_URL || 'http://localhost:8000',
   symptomAgentUrl: process.env.SYMPTOM_AGENT_URL || 'http://localhost:5001',
