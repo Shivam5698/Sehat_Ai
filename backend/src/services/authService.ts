@@ -11,7 +11,14 @@ export const AuthService = {
     const existing = await prisma.user.findUnique({ where: { email: data.email } });
     if (existing) throw new Error('Email already in use');
     const hash = await bcrypt.hash(data.password, 10);
-    const user = await prisma.user.create({ data: { email: data.email, password: hash, name: data.name } });
+    const user = await prisma.user.create({
+      data: {
+        email: data.email,
+        password: hash,
+        name: data.name,
+        role: 'patient',
+      },
+    });
     return { id: user.id, email: user.email, name: user.name };
   },
 
@@ -23,6 +30,19 @@ export const AuthService = {
     const access = jwt.sign({ sub: user.id, role: user.role }, config.jwtSecret, { expiresIn: ACCESS_EXPIRES });
     const refresh = jwt.sign({ sub: user.id }, config.jwtRefreshSecret, { expiresIn: REFRESH_EXPIRES });
     return { accessToken: access, refreshToken: refresh, user: { id: user.id, email: user.email, name: user.name } };
+  },
+
+  async getCurrentUser(userId: string) {
+    return prisma.user.findUnique({
+      where: { id: userId },
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        role: true,
+        language: true,
+      },
+    });
   },
 
   async refresh(refreshToken: string) {

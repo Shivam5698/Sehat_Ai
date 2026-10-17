@@ -44,6 +44,7 @@ app.use(json({ limit: '50mb' }));
 app.use(morgan('combined'));
 
 app.use(rateLimit({ windowMs: 1000 * 60, max: 300 }));
+const authRateLimit = rateLimit({ windowMs: 1000 * 60, max: 20 });
 
 // language detection for incoming API requests
 app.use(languageMiddleware);
@@ -59,7 +60,7 @@ app.get('/', (_req, res) => {
 app.use('/health', healthRouter);
 app.use('/api/health', healthRouter);
 
-app.use('/api/auth', authRouter);
+app.use('/api/auth', authRateLimit, authRouter);
 app.use('/api/consultation', consultationRouter);
 app.use('/api/video', videoRouter);
 app.use('/api/ai-gateway', aiGatewayRouter);

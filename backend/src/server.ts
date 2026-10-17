@@ -7,6 +7,8 @@ import { initSocket } from './socket/index.js';
 import { prisma } from './database/client.js';
 import { redisClient } from './database/redisClient.js';
 
+config.validateJwtSecrets();
+
 async function verifyDependencies() {
   try {
     await prisma.$connect();
