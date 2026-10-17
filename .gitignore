@@ -191,3 +191,5 @@ ai/.cache/
 
 
 !.env.example
+*.db
+*.db-journal
