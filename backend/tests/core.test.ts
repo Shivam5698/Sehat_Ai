@@ -159,6 +159,14 @@ test('emergency prescreen responds without invoking agents', async () => {
   assert.equal(result.emergency, true);
   assert.equal(result.degraded, false);
   assert.match(result.reply, /^Call 112 now\./);
+  assert.equal(result.reply.match(/Call 112 now/g)?.length, 1);
+  assert.equal(
+    result.reply.match(/This is not a diagnosis and is not a substitute for professional medical advice\./g)
+      ?.length,
+    1,
+  );
+  assert.match(result.reply, /Do not drive/);
+  assert.match(result.reply, /not a substitute/);
   assert.match(result.reply, /emergency services now/);
   assert.match(result.emergencyMessage ?? '', /112/);
   assert.deepEqual(result.agentsInvoked, []);
