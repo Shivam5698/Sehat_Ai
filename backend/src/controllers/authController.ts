@@ -17,8 +17,8 @@ export async function signup(req: Request, res: Response) {
     if (error instanceof AuthError) {
       return res.status(error.status).json({ ok: false, message: error.message });
     }
-    console.error('Signup failed', { errorName: error instanceof Error ? error.name : 'UnknownError' });
-    return res.status(500).json({ ok: false, message: 'Unable to create account' });
+    console.error('Signup service unavailable', { errorName: error instanceof Error ? error.name : 'UnknownError' });
+    return res.status(503).json({ ok: false, message: 'Authentication service unavailable' });
   }
 }
 
@@ -31,8 +31,8 @@ export async function login(req: Request, res: Response) {
     if (error instanceof AuthError) {
       return res.status(error.status).json({ ok: false, message: error.message });
     }
-    console.error('Login failed', { errorName: error instanceof Error ? error.name : 'UnknownError' });
-    return res.status(500).json({ ok: false, message: 'Unable to sign in' });
+    console.error('Login service unavailable', { errorName: error instanceof Error ? error.name : 'UnknownError' });
+    return res.status(503).json({ ok: false, message: 'Authentication service unavailable' });
   }
 }
 

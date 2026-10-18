@@ -15,9 +15,9 @@ import {
   Send,
   LoaderCircle,
 } from "lucide-react";
-import aiDoctor from "@/assets/ai-doctor.jpg";
 import { Button } from "@/components/ui/button";
 import { SectionHeading } from "@/components/shared/SectionHeading";
+import { AuthenticatedRoute } from "@/components/auth/AuthenticatedRoute";
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { consultationAPI, videoAPI } from "@/services/api/client";
@@ -77,7 +77,11 @@ export const Route = createFileRoute("/ai-doctor")({
 });
 
 function AiDoctorPage() {
-  return <AiDoctorConsultation />;
+  return (
+    <AuthenticatedRoute>
+      <AiDoctorConsultation />
+    </AuthenticatedRoute>
+  );
 }
 
 function AiDoctorConsultation() {
@@ -92,7 +96,6 @@ function AiDoctorConsultation() {
   >("idle");
   const [callError, setCallError] = useState("");
   const [deviceError, setDeviceError] = useState("");
-  const [avatarError, setAvatarError] = useState("");
   const [submissionError, setSubmissionError] = useState("");
   const [retryableMessage, setRetryableMessage] = useState<{
     text: string;
@@ -371,7 +374,6 @@ function AiDoctorConsultation() {
     if (callState === "ended") workflowRef.current = createWorkflow();
     setCallError("");
     setDeviceError("");
-    setAvatarError("");
     setSubmissionError("");
     setCallState("connecting");
     setCameraLoading(false);
@@ -396,9 +398,6 @@ function AiDoctorConsultation() {
       setConsultationId(startResult.consultationId);
       callActiveRef.current = true;
       setCallState("connected");
-      setAvatarError(
-        "Avatar unavailable: a verified approved-response integration is not configured. Text consultation is active.",
-      );
     } catch (error) {
       callActiveRef.current = false;
       recognitionRef.current?.stop();
@@ -441,7 +440,6 @@ function AiDoctorConsultation() {
     setCallError(failures.length ? failures.join("; ") : "");
     consultationIdRef.current = "";
     setConsultationId("");
-    setAvatarError("");
     setDetectedSymptoms([]);
     setCallState("ended");
     setIsListening(false);
@@ -566,43 +564,13 @@ function AiDoctorConsultation() {
               </div>
             </div>
 
-            <div className="relative aspect-video bg-mint">
-              <img
-                src={aiDoctor}
-                alt="Static illustration; live avatar unavailable"
-                className="absolute inset-0 h-full w-full object-cover"
+            <div className="relative aspect-video overflow-hidden bg-mint">
+              <iframe
+                src="https://app.trugen.ai/embed/91863ab7-327d-4157-be2c-9217fed5b112"
+                title="Trugen AI teammate"
+                allow="camera; microphone; fullscreen; display-capture"
+                className="absolute inset-0 block h-full w-full border-0"
               />
-              <div className="absolute inset-0 grid place-items-end p-4">
-                <span
-                  role="status"
-                  className="rounded-full bg-background/80 px-3 py-1.5 text-xs text-muted-foreground"
-                >
-                  {avatarError ||
-                    "Optional avatar unavailable: provider-approved response presentation is not verified."}
-                </span>
-              </div>
-              <div className="absolute top-4 right-4 rounded-2xl bg-background/80 backdrop-blur border border-border p-3 w-44 shadow-medical">
-                <div className="text-[10px] uppercase text-muted-foreground">You</div>
-                <div className="mt-1 aspect-video rounded-lg bg-foreground/80 overflow-hidden">
-                  {cameraLoading ? (
-                    <div className="grid h-full w-full place-items-center text-xs text-muted-foreground">
-                      Activating camera…
-                    </div>
-                  ) : mediaStream && camOn ? (
-                    <video
-                      ref={videoRef}
-                      autoPlay
-                      muted
-                      playsInline
-                      className="h-full w-full object-cover"
-                    />
-                  ) : (
-                    <div className="grid h-full w-full place-items-center text-xs text-muted-foreground">
-                      Camera off
-                    </div>
-                  )}
-                </div>
-              </div>
             </div>
 
             <div className="p-5 flex items-center justify-center gap-3 border-t border-border">

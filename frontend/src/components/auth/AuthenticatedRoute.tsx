@@ -74,7 +74,10 @@ export function AuthenticatedRoute({ children }: { children: ReactNode }) {
     return (
       <section className="container mx-auto px-4 py-12">
         <section className="mx-auto max-w-lg space-y-4 rounded-2xl border border-border bg-card p-6">
-          <p role="alert">We could not verify your sign-in. Check your connection and try again.</p>
+          <p role="alert">
+            We could not verify your sign-in because the backend is unavailable. Check the backend
+            connection and try again.
+          </p>
           <Button onClick={() => setAttempt((current) => current + 1)}>Try again</Button>
         </section>
       </section>

@@ -7,6 +7,7 @@ import { Stethoscope } from "lucide-react";
 import { FormEvent, useState } from "react";
 import team from "@/assets/team-doctors.jpg";
 import { authAPI, authStorage } from "@/services/api/client";
+import { ApiError } from "@/types/aiDoctor";
 
 export const Route = createFileRoute("/signup")({
   head: () => ({
@@ -18,8 +19,11 @@ export const Route = createFileRoute("/signup")({
     ],
   }),
   beforeLoad: async () => {
-    if (typeof window !== "undefined" && (await authAPI.hasValidSession())) {
-      throw redirect({ to: "/ai-doctor" });
+    if (typeof window === "undefined") return;
+    try {
+      if (await authAPI.hasValidSession()) throw redirect({ to: "/ai-doctor" });
+    } catch (error) {
+      if (!(error instanceof ApiError) && !(error instanceof TypeError)) throw error;
     }
   },
   component: SignupPage,
@@ -50,7 +54,13 @@ function SignupPage() {
       authStorage.setSession({ user: result.user });
       navigate({ to: "/ai-doctor" });
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Unable to create account");
+      setError(
+        err instanceof TypeError
+          ? "Cannot reach the Sehat AI backend. Check that it is running and try again."
+          : err instanceof Error
+            ? err.message
+            : "Unable to create account",
+      );
     } finally {
       setSubmitting(false);
     }

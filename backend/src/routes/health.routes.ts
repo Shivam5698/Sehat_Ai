@@ -24,44 +24,37 @@ const checkEndpoint = async (url: string) => {
 };
 
 healthRouter.get('/', async (_req, res) => {
-  const healthStatus = {
-    status: 'healthy',
-    server: 'running',
-    database: 'connected',
-    agents: 'unknown',
-    rag: 'unknown',
-  };
+  let database = 'connected';
+  let redis = 'connected';
 
   try {
     await prisma.$queryRaw`SELECT 1`;
-  } catch (err) {
-    healthStatus.status = 'unhealthy';
-    healthStatus.database = 'disconnected';
+  } catch {
+    database = 'disconnected';
   }
 
   try {
     const pong = await redisClient.ping();
-    if (pong !== 'PONG') {
-      healthStatus.status = 'unhealthy';
-      healthStatus.database = 'disconnected';
-    }
-  } catch (err) {
-    healthStatus.status = 'unhealthy';
-    healthStatus.database = 'disconnected';
+    if (pong !== 'PONG') redis = 'disconnected';
+  } catch {
+    redis = 'disconnected';
   }
 
   const agentHealth = await checkEndpoint(config.aiGatewayUrl || config.aiServiceUrl);
-  healthStatus.agents = agentHealth.healthy ? 'healthy' : 'unhealthy';
-
   const ragHealth = await checkEndpoint(config.aiServiceUrl);
-  healthStatus.rag = ragHealth.healthy ? 'healthy' : 'unhealthy';
+  const healthy =
+    database === 'connected' &&
+    redis === 'connected' &&
+    agentHealth.healthy &&
+    ragHealth.healthy;
 
-  if (!agentHealth.healthy || !ragHealth.healthy || healthStatus.database === 'disconnected') {
-    healthStatus.status = 'unhealthy';
-  }
-
-  return res.json({
-    ...healthStatus,
+  return res.status(healthy ? 200 : 503).json({
+    status: healthy ? 'healthy' : 'degraded',
+    server: 'running',
+    database,
+    redis,
+    agents: agentHealth.healthy ? 'healthy' : 'unhealthy',
+    rag: ragHealth.healthy ? 'healthy' : 'unhealthy',
     agentHealth,
     ragHealth,
   });
@@ -88,29 +81,22 @@ healthRouter.get('/rag', async (_req, res) => {
 });
 
 healthRouter.get('/database', async (_req, res) => {
-  const status = {
-    healthy: true,
-    database: 'connected',
-    redis: 'connected',
-  };
+  let database = 'connected';
+  let redis = 'connected';
 
   try {
     await prisma.$queryRaw`SELECT 1`;
-  } catch (err) {
-    status.healthy = false;
-    status.database = 'disconnected';
+  } catch {
+    database = 'disconnected';
   }
 
   try {
     const pong = await redisClient.ping();
-    if (pong !== 'PONG') {
-      status.healthy = false;
-      status.redis = 'disconnected';
-    }
-  } catch (err) {
-    status.healthy = false;
-    status.redis = 'disconnected';
+    if (pong !== 'PONG') redis = 'disconnected';
+  } catch {
+    redis = 'disconnected';
   }
 
-  return res.json(status);
+  const healthy = database === 'connected' && redis === 'connected';
+  return res.status(healthy ? 200 : 503).json({ healthy, database, redis });
 });

@@ -1,4 +1,4 @@
-﻿# Backend
+# Backend
 
 This directory contains the Express/TypeScript backend for Sehat AI.
 
@@ -39,3 +39,31 @@ The dashboard route is public, but personal account and consultation data are
 shown only after the session and owner-scoped `GET /api/consultation` endpoint
 are confirmed. Risk metrics, appointments, and agent activity are not exposed
 by a dashboard API and are intentionally not presented as available data.
+
+## Local development
+
+From the repository root, start the backend and frontend in separate terminals:
+
+```powershell
+npm run dev:backend
+npm run dev:frontend
+```
+
+The backend reads `backend/.env` first. Configure `DATABASE_URL`,
+`JWT_SECRET`, and `JWT_REFRESH_SECRET` there; the checked-in Prisma schema
+uses SQLite. The backend verifies database connectivity and the authentication
+session table before listening on `PORT` (5000 by default). If that port is
+already occupied, identify the owning process before stopping it or set an
+explicit unused `PORT`.
+
+Redis is used by video-session state and realtime events, not by cookie-backed
+signup, login, or session verification. The backend can serve database-backed
+authentication while Redis is unavailable, but reports degraded health and
+Redis-backed features remain unavailable. To start the configured local Redis
+service when Docker Desktop is running:
+
+```powershell
+docker compose -f backend/docker-compose.yml up -d redis
+```
+
+If Redis is started after the backend, restart the backend to reconnect.

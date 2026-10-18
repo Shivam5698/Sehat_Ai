@@ -60,7 +60,7 @@ export function Navbar() {
           setAuthStatus("unauthenticated");
         } else {
           setAuthStatus("error");
-          setAuthError("Unable to verify your sign-in status.");
+          setAuthError("Unable to verify your sign-in status. The backend may be unavailable.");
         }
       }
     };
