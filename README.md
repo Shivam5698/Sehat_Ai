@@ -1,6 +1,6 @@
 # Sehat AI
 
-**Intelligent AI-powered healthcare platform** providing real-time multi-agent medical consultations, hospital matching, appointment booking, and medical report generation.
+**Intelligent AI-powered healthcare platform** providing a real -time multi-agent medical consultations, hospital matching, appointment booking, and medical report generation.
 
 ## Overview
 
