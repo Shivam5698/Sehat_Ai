@@ -1,0 +1,26 @@
+{
+  "liveStatus": "Live consultation",
+  "doctorLabel": "AI Doctor",
+  "liveTranscript": "Live transcript",
+  "sample": {
+    "greeting": "Good morning, I’m your AI doctor. Tell me how you are feeling today.",
+    "userSymptom": "I have a fever, cough, and sore throat.",
+    "followup": "How long have you had these symptoms?",
+    "userReply": "For about two days, with mild fatigue and body ache."
+  },
+  "panels": {
+    "detectedSymptoms": "Detected symptoms",
+    "severityScore": "Severity score",
+    "activeAgents": "Live agent activity"
+  },
+  "detected": [
+    "Fever (38.5°C)",
+    "Dry cough",
+    "Sore throat",
+    "Mild fatigue"
+  ],
+  "severityLabel": {
+    "moderate": "Moderate risk"
+  },
+  "emergencyPrefix": "Emergency risk"
+}

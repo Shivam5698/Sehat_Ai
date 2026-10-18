@@ -1,0 +1,10 @@
+{
+  "testData": true,
+  "scenario": "degraded-emergency",
+  "status": 502,
+  "payload": {
+    "ok": false,
+    "message": "Consultation response unavailable. No validated assessment was returned.",
+    "shouldEscalate": true
+  }
+}

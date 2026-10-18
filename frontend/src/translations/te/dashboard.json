@@ -1,0 +1,8 @@
+{
+  "liveMonitoring": "Live Monitoring",
+  "multiAgentActivity": "Multi-Agent Activity Dashboard",
+  "subtitle": "Real-time view of every agent reasoning across your consultation.",
+  "riskHigh": "High Risk",
+  "riskModerate": "Moderate Risk",
+  "riskLow": "Low Risk"
+}

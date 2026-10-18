@@ -1,0 +1,14 @@
+[
+  {
+    "name": "Hypertension",
+    "category": "Cardiovascular",
+    "description": "A chronic condition characterized by consistently elevated blood pressure.",
+    "severity": "medium"
+  },
+  {
+    "name": "Acute Bronchitis",
+    "category": "Respiratory",
+    "description": "Inflammation of the bronchial tubes leading to cough and difficulty breathing.",
+    "severity": "low"
+  }
+]

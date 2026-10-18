@@ -1,0 +1,6 @@
+{
+  "emergency": "EMERGENCY_ESCALATION",
+  "review": "DOCTOR_REVIEW",
+  "caution": "CAUTION",
+  "none": "NO_ESCALATION"
+}

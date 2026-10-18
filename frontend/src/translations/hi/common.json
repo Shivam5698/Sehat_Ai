@@ -1,0 +1,67 @@
+{
+  "nav": {
+    "home": "होम",
+    "aiDoctor": "एआई डॉक्टर",
+    "consult": "परामर्श",
+    "reports": "रिपोर्ट",
+    "dashboard": "डैशबोर्ड",
+    "about": "हमारे बारे में",
+    "contact": "संपर्क",
+    "login": "लॉगिन",
+    "signup": "साइन अप",
+    "appointment": "अपॉइंटमेंट"
+  },
+  "hero": {
+    "title1": "रीयल-टाइम में एआई डॉक्टर",
+    "title2": "से बात करें",
+    "sub": "अपनी भाषा में एक दोस्ताना एआई डॉक्टर से बात करें।",
+    "ctaStart": "परामर्श शुरू करें",
+    "ctaEmergency": "आपातकालीन सहायता"
+  },
+  "steps": [
+    "एआई डॉक्टर से बात करें",
+    "लक्षण बताएं",
+    "एआई आपकी स्थिति समझता है",
+    "जोखिम आकलन प्राप्त करें",
+    "नज़दीकी अस्पताल और डॉक्टर ढूंढें",
+    "तुरंत अपॉइंटमेंट बुक करें",
+    "एआई मेडिकल रिपोर्ट प्राप्त करें"
+  ],
+  "footer": {
+    "product": "Product",
+    "company": "Company",
+    "connect": "Connect",
+    "aboutText": "Intelligent AI-powered healthcare platform for real-time consultations, hospital matching, and medical report generation.",
+    "copyright": "© {{year}} Sehat AI. All rights reserved."
+  },
+  "buttons": {
+    "bookNow": "Book Now",
+    "viewDetails": "View Details",
+    "confirm": "Confirm",
+    "sendMessage": "Send Message",
+    "createAccount": "Create Account",
+    "signIn": "Sign In"
+  },
+  "auth": {
+    "welcomeBack": "Welcome back",
+    "signInDesc": "Sign in to access your AI doctor.",
+    "createAccountTitle": "Create your account",
+    "createAccountDesc": "Meet your AI doctor in minutes."
+  },
+  "who": {
+    "aiDoctor": "AI Doctor",
+    "you": "You"
+  },
+  "agents": {
+    "symptom": "Understanding Symptoms",
+    "severity": "Analyzing Condition",
+    "safety": "Checking Risk",
+    "hospital": "Finding Nearby Care",
+    "status": {
+      "extracting": "Extracting data",
+      "scoring": "Scoring severity",
+      "monitoring": "Monitoring trends",
+      "searching": "Searching nearby networks"
+    }
+  }
+}

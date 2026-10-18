@@ -1,0 +1,16 @@
+[
+  {
+    "hospitalName": "Sehat General Hospital",
+    "location": "New Delhi, India",
+    "specialties": "Emergency, Cardiology, General Medicine",
+    "emergencyAvailable": true,
+    "contact": "+91-1122334455"
+  },
+  {
+    "hospitalName": "MediCare Multispecialty",
+    "location": "Mumbai, India",
+    "specialties": "Orthopedics, Neurology, Pediatrics",
+    "emergencyAvailable": false,
+    "contact": "+91-9988776655"
+  }
+]

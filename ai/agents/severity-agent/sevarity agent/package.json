@@ -1,0 +1,36 @@
+{
+  "name": "severity-agent",
+  "version": "1.0.0",
+  "description": "Standalone clinical severity agent for SehatAI with risk scoring, emergency detection, and confidence estimation.",
+  "main": "dist/server.js",
+  "types": "dist/types/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "start": "ts-node src/server.ts",
+    "test": "vitest run --coverage --coverage.provider=v8",
+    "dev": "ts-node-dev --respawn --transpile-only src/server.ts"
+  },
+  "keywords": [
+    "severity",
+    "clinical",
+    "risk",
+    "healthcare",
+    "agent"
+  ],
+  "license": "MIT",
+  "dependencies": {
+    "express": "^4.18.2"
+  },
+  "devDependencies": {
+    "@types/express": "^4.17.17",
+    "@types/node": "^20.12.0",
+    "@types/supertest": "^2.0.14",
+    "@vitest/coverage-istanbul": "^4.1.8",
+    "@vitest/coverage-v8": "^4.1.8",
+    "supertest": "^6.3.3",
+    "ts-node": "^10.9.1",
+    "ts-node-dev": "^2.0.0",
+    "typescript": "^5.6.2",
+    "vitest": "^4.1.8"
+  }
+}

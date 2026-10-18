@@ -1,0 +1,67 @@
+{
+  "nav": {
+    "home": "Home",
+    "aiDoctor": "AI Doctor",
+    "consult": "Consult",
+    "reports": "Reports",
+    "dashboard": "Dashboard",
+    "about": "About",
+    "contact": "Contact",
+    "login": "Login",
+    "signup": "Sign Up",
+    "appointment": "Book Appointment"
+  },
+  "hero": {
+    "title1": "Talk to an AI Doctor",
+    "title2": "in Real-Time",
+    "sub": "Talk to a friendly AI doctor in your language.",
+    "ctaStart": "Start Consultation",
+    "ctaEmergency": "Emergency Help"
+  },
+  "steps": [
+    "Talk to AI Doctor",
+    "Describe Symptoms",
+    "AI Understands Your Condition",
+    "Get Risk Assessment",
+    "Find Nearby Hospital & Doctor",
+    "Book Appointment Instantly",
+    "Receive AI Medical Report"
+  ],
+  "footer": {
+    "product": "Product",
+    "company": "Company",
+    "connect": "Connect",
+    "aboutText": "Intelligent AI-powered healthcare platform for real-time consultations, hospital matching, and medical report generation.",
+    "copyright": "© {{year}} Sehat AI. All rights reserved."
+  },
+  "buttons": {
+    "bookNow": "Book Now",
+    "viewDetails": "View Details",
+    "confirm": "Confirm",
+    "sendMessage": "Send Message",
+    "createAccount": "Create Account",
+    "signIn": "Sign In"
+  },
+  "auth": {
+    "welcomeBack": "Welcome back",
+    "signInDesc": "Sign in to access your AI doctor.",
+    "createAccountTitle": "Create your account",
+    "createAccountDesc": "Meet your AI doctor in minutes."
+  },
+  "who": {
+    "aiDoctor": "AI Doctor",
+    "you": "You"
+  },
+  "agents": {
+    "symptom": "Understanding Symptoms",
+    "severity": "Analyzing Condition",
+    "safety": "Checking Risk",
+    "hospital": "Finding Nearby Care",
+    "status": {
+      "extracting": "Extracting data",
+      "scoring": "Scoring severity",
+      "monitoring": "Monitoring trends",
+      "searching": "Searching nearby networks"
+    }
+  }
+}
