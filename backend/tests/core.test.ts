@@ -25,6 +25,9 @@ const [
   { evaluateSafety },
   { aiDoctorRouter },
   { config },
+  { videoRouter },
+  { trugenRouter },
+  { redisClient },
 ] = await Promise.all([
     import('../src/controllers/authController.js'),
     import('../src/middleware/auth.js'),
@@ -38,7 +41,11 @@ const [
     import('../src/services/agents/safetyAdapter.js'),
     import('../src/routes/aiDoctor.js'),
     import('../src/config/index.js'),
+    import('../src/routes/video.js'),
+    import('../src/routes/trugen.js'),
+    import('../src/database/redisClient.js'),
   ]);
+redisClient.disconnect();
 
 function responseMock() {
   return {
@@ -152,6 +159,94 @@ test('consultation owned by another user returns 404', async (context) => {
     where: { id: 'consultation-1', userId: 'different-user' },
     include: { transcripts: true, reports: true, agentLogs: true },
   });
+});
+
+test("user cannot use another user's TruGen session", async (context) => {
+  const consultationId = 'user-a-consultation';
+  const trugenSessionId = 'user-a-trugen-session';
+  const delegate = prisma.consultation as unknown as {
+    findFirst: (args: unknown) => Promise<unknown>;
+  };
+  const originalFindFirst = delegate.findFirst;
+  let lookup: unknown;
+  delegate.findFirst = async (args: unknown) => {
+    lookup = args;
+    return null;
+  };
+  context.mock.method(redisClient, 'get', async (key: string) => {
+    if (key === `video:trugen:${trugenSessionId}`) return consultationId;
+    if (key === `video:session:${consultationId}`) {
+      return JSON.stringify({
+        id: 'video-session-a',
+        consultationId,
+        userId: 'user-a',
+        language: 'en',
+        status: 'initialized',
+        participants: [],
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      });
+    }
+    return null;
+  });
+
+  const app = express();
+  app.use(express.json());
+  app.use('/api/trugen', trugenRouter);
+  const server = createServer(app);
+  server.listen(0, '127.0.0.1');
+  await once(server, 'listening');
+
+  try {
+    const address = server.address();
+    assert(address && typeof address !== 'string');
+    const token = jwt.sign({ sub: 'user-b' }, config.jwtSecret);
+    const response = await fetch(`http://127.0.0.1:${address.port}/api/trugen/stream`, {
+      method: 'POST',
+      headers: {
+        authorization: `Bearer ${token}`,
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({ sessionId: trugenSessionId, chunk: 'audio' }),
+    });
+
+    assert.equal(response.status, 404);
+    assert.deepEqual(await response.json(), {
+      ok: false,
+      message: 'Consultation not found',
+    });
+    assert.deepEqual(lookup, {
+      where: { id: consultationId, userId: 'user-b' },
+    });
+  } finally {
+    server.close();
+    await once(server, 'close');
+    delegate.findFirst = originalFindFirst;
+  }
+});
+
+test('POST /api/video/avatar/speak returns 404', async () => {
+  const app = express();
+  app.use(express.json());
+  app.use('/api/video', videoRouter);
+  const server = createServer(app);
+  server.listen(0, '127.0.0.1');
+  await once(server, 'listening');
+
+  try {
+    const address = server.address();
+    assert(address && typeof address !== 'string');
+    const response = await fetch(`http://127.0.0.1:${address.port}/api/video/avatar/speak`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ sessionId: 'session-a', text: 'client text' }),
+    });
+    assert.equal(response.status, 404);
+  } finally {
+    server.close();
+    await once(server, 'close');
+    redisClient.disconnect();
+  }
 });
 
 test('emergency prescreen responds without invoking agents', async () => {

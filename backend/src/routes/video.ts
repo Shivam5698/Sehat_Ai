@@ -8,7 +8,6 @@ import {
   endVideoSession,
   getVideoSessionStatus,
   listSessionParticipants,
-  avatarSpeak,
   listAvailableAvatars,
   pauseVideoSession,
   resumeVideoSession,
@@ -33,6 +32,5 @@ videoRouter.post('/session/resume', requireAuth, resumeVideoSession);
 videoRouter.post('/transcript', requireAuth, sendVideoTranscript);
 
 // Avatar Control
-videoRouter.post('/avatar/speak', requireAuth, avatarSpeak);
 videoRouter.post('/avatar/respond', requireAuth, avatarRespond);
 videoRouter.get('/avatars', requireAuth, listAvailableAvatars);
