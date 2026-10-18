@@ -1,6 +1,9 @@
-from fastapi import FastAPI, HTTPException, BackgroundTasks
-from pydantic import BaseModel, Field
-from typing import List, Optional, Dict, Any
+from fastapi import FastAPI, HTTPException, BackgroundTasks, Request
+from fastapi.exceptions import RequestValidationError
+from fastapi.exception_handlers import request_validation_exception_handler
+from fastapi.responses import JSONResponse
+from pydantic import BaseModel, ConfigDict, Field
+from typing import List, Optional, Dict, Any, Literal
 import os
 import json
 import openai
@@ -18,12 +21,21 @@ app = FastAPI(title="SehatAgent AI Service", version="1.0.0")
 # Initialize OpenAI
 openai.api_key = os.getenv('OPENAI_API_KEY', '')
 
-# Initialize RAG
-rag_pipeline = RAGPipeline()
+# RAG requires optional vector-store dependencies and is initialized only when used.
+rag_pipeline = None
+
+
+def get_rag_pipeline():
+    global rag_pipeline
+    if rag_pipeline is None:
+        rag_pipeline = RAGPipeline()
+    return rag_pipeline
 
 def build_medical_context(query: str, language: str = 'en', emergency: bool = False) -> str:
     try:
-        rag_result = rag_pipeline.retrieve_context(query, language=language, emergency=emergency)
+        rag_result = get_rag_pipeline().retrieve_context(
+            query, language=language, emergency=emergency
+        )
         snippets = []
         for idx, item in enumerate(rag_result.get('results', [])[:4], start=1):
             content = item.get('content', '')
@@ -107,6 +119,80 @@ class AdviceInput(BaseModel):
     symptoms: List[Symptom]
     consultationId: str
     language: str = "en"
+
+
+class ProcessHistoryEntry(BaseModel):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    speaker: Literal["patient", "ai", "system"]
+    text: str = Field(..., min_length=1, max_length=20000)
+    timestamp: Optional[datetime] = None
+
+
+class ProcessMetadata(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    conversationHistory: List[ProcessHistoryEntry]
+
+
+class ProcessRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    sessionId: str = Field(..., min_length=1, max_length=128)
+    conversationId: str = Field(..., min_length=1, max_length=128)
+    language: str = Field(default="en", min_length=1, max_length=32)
+    input: str = Field(..., min_length=1, max_length=20000)
+    metadata: ProcessMetadata
+
+
+class ProcessUnavailableResponse(BaseModel):
+    ok: bool = False
+    code: str = "CONSULTATION_WORKFLOW_UNAVAILABLE"
+    message: str = (
+        "The consultation workflow is unavailable because no validated "
+        "orchestration pipeline is configured."
+    )
+    missingCapabilities: List[str] = Field(default_factory=list)
+
+
+class InvalidRequestResponse(BaseModel):
+    ok: bool = False
+    code: str = "INVALID_REQUEST"
+    message: str = "Request body is invalid."
+
+
+@app.exception_handler(RequestValidationError)
+async def safe_request_validation_error(
+    request: Request, error: RequestValidationError
+):
+    if request.url.path == "/process":
+        return JSONResponse(
+            status_code=422,
+            content=InvalidRequestResponse().model_dump(),
+        )
+    return await request_validation_exception_handler(request, error)
+
+
+@app.post(
+    "/process",
+    response_model=ProcessUnavailableResponse,
+    status_code=503,
+    responses={422: {"model": InvalidRequestResponse}},
+)
+async def process_consultation(_payload: ProcessRequest):
+    from consultation_orchestrator import (
+        WorkflowUnavailable,
+        consultation_orchestrator,
+    )
+
+    try:
+        await consultation_orchestrator.process(_payload)
+    except WorkflowUnavailable as error:
+        response = ProcessUnavailableResponse(
+            missingCapabilities=list(error.missing_capabilities)
+        )
+        return JSONResponse(status_code=503, content=response.model_dump())
+    raise RuntimeError("Consultation orchestrator returned without a validated result.")
 
 # ======================
 # SYMPTOM EXTRACTION AGENT
@@ -464,7 +550,7 @@ Text: {payload.text}"""
 @app.post("/rag/search")
 async def rag_search(payload: RagSearchInput):
     try:
-        result = rag_pipeline.retrieve_context(payload.query, language=payload.language, emergency=payload.emergency)
+        result = get_rag_pipeline().retrieve_context(payload.query, language=payload.language, emergency=payload.emergency)
         return {"ok": True, "data": result}
     except Exception as error:
         logger.error(f"RAG search error: {error}")
@@ -473,7 +559,7 @@ async def rag_search(payload: RagSearchInput):
 @app.post("/rag/context")
 async def rag_context(payload: MedicalRetrieveInput):
     try:
-        result = rag_pipeline.retrieve_context(payload.query, language=payload.language)
+        result = get_rag_pipeline().retrieve_context(payload.query, language=payload.language)
         return {"ok": True, "context": result}
     except Exception as error:
         logger.error(f"RAG context error: {error}")
@@ -482,7 +568,7 @@ async def rag_context(payload: MedicalRetrieveInput):
 @app.post("/rag/emergency")
 async def rag_emergency(payload: RagSearchInput):
     try:
-        result = rag_pipeline.retrieve_context(payload.query, language=payload.language, emergency=True)
+        result = get_rag_pipeline().retrieve_context(payload.query, language=payload.language, emergency=True)
         return {"ok": True, "context": result}
     except Exception as error:
         logger.error(f"RAG emergency error: {error}")
@@ -491,7 +577,7 @@ async def rag_emergency(payload: RagSearchInput):
 @app.post("/rag/multilingual")
 async def rag_multilingual(payload: MedicalRetrieveInput):
     try:
-        result = rag_pipeline.retrieve_context(payload.query, language=payload.language)
+        result = get_rag_pipeline().retrieve_context(payload.query, language=payload.language)
         return {"ok": True, "context": result}
     except Exception as error:
         logger.error(f"RAG multilingual error: {error}")
@@ -500,7 +586,7 @@ async def rag_multilingual(payload: MedicalRetrieveInput):
 @app.post("/medical/retrieve")
 async def medical_retrieve(payload: MedicalRetrieveInput):
     try:
-        result = rag_pipeline.retrieve_context(payload.query, language=payload.language)
+        result = get_rag_pipeline().retrieve_context(payload.query, language=payload.language)
         return {"ok": True, "data": result}
     except Exception as error:
         logger.error(f"Medical retrieve error: {error}")
@@ -509,7 +595,7 @@ async def medical_retrieve(payload: MedicalRetrieveInput):
 @app.post("/medical/validate")
 async def medical_validate(payload: MedicalValidateInput):
     try:
-        context = rag_pipeline.retrieve_context(payload.query, language=payload.language)
+        context = get_rag_pipeline().retrieve_context(payload.query, language=payload.language)
         return {
             "ok": True,
             "validation": {
@@ -581,6 +667,7 @@ async def health():
     return {
         "ok": True,
         "service": "SehatAgent AI Service",
+        "consultationWorkflow": "unavailable",
         "timestamp": datetime.now().isoformat()
     }
 
@@ -592,6 +679,7 @@ async def root():
         "version": "1.0.0",
         "status": "running",
         "endpoints": {
+            "consultation_workflow": "POST /process (unavailable)",
             "symptom_extraction": "POST /agents/symptom",
             "severity_assessment": "POST /agents/severity",
             "safety_check": "POST /agents/safety",
@@ -605,4 +693,3 @@ async def root():
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
-

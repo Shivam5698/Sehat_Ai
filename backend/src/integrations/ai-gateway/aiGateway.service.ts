@@ -1,6 +1,6 @@
 import { AIOrchestratorService, OrchestrationResult } from '../../services/aiOrchestratorService.js';
 import { config } from '../../config/index.js';
-import { ConversationContext } from '../../types/consultation.js';
+import { ConversationContext, TranscriptHistoryEntry } from '../../types/consultation.js';
 
 export class AIGatewayService {
   private orchestrator = new AIOrchestratorService(config.aiServiceUrl);
@@ -9,7 +9,7 @@ export class AIGatewayService {
     consultationId: string,
     transcript: string,
     language: string,
-    history: { id: string; speaker: 'patient' | 'ai' | 'system'; text: string; language: string; timestamp: Date }[] = []
+    history: TranscriptHistoryEntry[] = []
   ): Promise<OrchestrationResult> {
     const context: ConversationContext = {
       consultationId,
@@ -18,7 +18,18 @@ export class AIGatewayService {
       riskLevel: 'unknown',
       history:
         history.length > 0
-          ? history
+          ? history.map((entry, index) => ({
+              id: `history-${index + 1}`,
+              speaker: entry.speaker,
+              text: entry.text,
+              language: entry.language || language,
+              timestamp:
+                entry.timestamp instanceof Date
+                  ? entry.timestamp
+                  : entry.timestamp
+                    ? new Date(entry.timestamp)
+                    : new Date(),
+            }))
           : [
               {
                 id: 'initial',

@@ -1,8 +1,16 @@
 import { Link } from "@tanstack/react-router";
-import { Stethoscope, Menu, Globe } from "lucide-react";
-import { useState } from "react";
+import { Stethoscope, Menu, Globe, LogOut } from "lucide-react";
+import { useEffect, useState } from "react";
+import { useNavigate } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
-import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+  SheetTrigger,
+} from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -10,12 +18,99 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { ApiError } from "@/types/aiDoctor";
+import { authAPI, authStorage, type AuthUser } from "@/services/api/client";
 
 export function Navbar() {
   const { t, i18n } = useTranslation(["common"]);
+  const navigate = useNavigate();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [authStatus, setAuthStatus] = useState<
+    "loading" | "authenticated" | "unauthenticated" | "error"
+  >("loading");
+  const [user, setUser] = useState<AuthUser | null>(null);
+  const [signingOut, setSigningOut] = useState(false);
+  const [authError, setAuthError] = useState("");
 
   const lang = (i18n.language || 'en') as string;
+  const userLabel =
+    typeof user?.name === "string" && user.name
+      ? user.name
+      : typeof user?.email === "string"
+        ? user.email
+        : "";
+
+  useEffect(() => {
+    let active = true;
+    let validationAttempt = 0;
+    const syncStoredSession = async () => {
+      const currentAttempt = ++validationAttempt;
+      setAuthStatus("loading");
+      try {
+        const session = await authAPI.currentSession();
+        if (!active || currentAttempt !== validationAttempt) return;
+        setUser(session.user);
+        setAuthStatus("authenticated");
+        setAuthError("");
+      } catch (error: unknown) {
+        if (!active || currentAttempt !== validationAttempt) return;
+        if (error instanceof ApiError && error.status === 401) {
+          authStorage.clearSession();
+          setUser(null);
+          setAuthStatus("unauthenticated");
+        } else {
+          setAuthStatus("error");
+          setAuthError("Unable to verify your sign-in status.");
+        }
+      }
+    };
+    const unsubscribe = authStorage.subscribe((authenticated) => {
+      const storedUser = authStorage.getUser();
+      if (authenticated === true && storedUser) {
+        setUser(storedUser);
+        setAuthStatus("authenticated");
+        setAuthError("");
+        void syncStoredSession();
+      } else if (authenticated === false) {
+        validationAttempt += 1;
+        setUser(null);
+        setAuthStatus("unauthenticated");
+        setAuthError("");
+      } else {
+        void syncStoredSession();
+      }
+    });
+    void syncStoredSession();
+    return () => {
+      active = false;
+      validationAttempt += 1;
+      unsubscribe();
+    };
+  }, []);
+
+  async function handleSignOut() {
+    setSigningOut(true);
+    setAuthError("");
+    try {
+      await authAPI.logout();
+      authStorage.clearSession();
+      setUser(null);
+      setAuthStatus("unauthenticated");
+      setMobileMenuOpen(false);
+      await navigate({ to: "/login" });
+    } catch {
+      if (!authStorage.getUser()) {
+        setUser(null);
+        setAuthStatus("unauthenticated");
+        setMobileMenuOpen(false);
+        await navigate({ to: "/login" });
+      } else {
+        setAuthError("Unable to confirm sign out. Check your connection and try again.");
+      }
+    } finally {
+      setSigningOut(false);
+    }
+  }
 
   const links = [
     { to: "/", label: t('nav.home') },
@@ -69,14 +164,39 @@ export function Navbar() {
               <DropdownMenuItem onClick={() => i18n.changeLanguage('ur')}>اردو</DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
-          <Link to="/login">
-            <Button variant="ghost" size="sm" className="rounded-full">{t('nav.login')}</Button>
-          </Link>
-          <Link to="/signup">
-            <Button size="sm" className="rounded-full bg-gradient-primary text-primary-foreground shadow-medical hover:opacity-90">
-              {t('nav.signup')}
-            </Button>
-          </Link>
+          {authStatus === "authenticated" ? (
+            <>
+              <span className="max-w-40 truncate text-sm text-muted-foreground">
+                {userLabel}
+              </span>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="rounded-full gap-1.5"
+                onClick={() => void handleSignOut()}
+                disabled={signingOut}
+              >
+                <LogOut className="h-4 w-4" />
+                {signingOut ? "Signing out…" : "Sign out"}
+              </Button>
+            </>
+          ) : authStatus === "unauthenticated" ? (
+            <>
+              <Link to="/login">
+                <Button variant="ghost" size="sm" className="rounded-full">{t('nav.login')}</Button>
+              </Link>
+              <Link to="/signup">
+                <Button size="sm" className="rounded-full bg-gradient-primary text-primary-foreground shadow-medical hover:opacity-90">
+                  {t('nav.signup')}
+                </Button>
+              </Link>
+            </>
+          ) : null}
+          {authError ? (
+            <p className="max-w-56 text-xs text-destructive" role="alert">
+              {authError}
+            </p>
+          ) : null}
         </div>
 
         <Sheet open={mobileMenuOpen} onOpenChange={setMobileMenuOpen}>
@@ -86,6 +206,10 @@ export function Navbar() {
             </Button>
           </SheetTrigger>
           <SheetContent>
+            <SheetHeader className="sr-only">
+              <SheetTitle>Mobile navigation</SheetTitle>
+              <SheetDescription>Navigation links for Sehat AI.</SheetDescription>
+            </SheetHeader>
             <div className="flex flex-col gap-2 mt-8">
               {links.map((l) => (
                 <Link
@@ -98,12 +222,32 @@ export function Navbar() {
                 </Link>
               ))}
               <div className="border-t border-border my-3" />
-              <Link to="/login" onClick={() => setMobileMenuOpen(false)}>
-                <Button variant="outline" className="w-full rounded-full">{t('nav.login')}</Button>
-              </Link>
-              <Link to="/signup" onClick={() => setMobileMenuOpen(false)}>
-                <Button className="w-full rounded-full bg-gradient-primary text-primary-foreground">{t('nav.signup')}</Button>
-              </Link>
+              {authStatus === "authenticated" ? (
+                <>
+                  {userLabel ? (
+                    <p className="px-3 text-sm text-muted-foreground">{userLabel}</p>
+                  ) : null}
+                  <Button
+                    variant="outline"
+                    className="w-full rounded-full"
+                    onClick={() => void handleSignOut()}
+                    disabled={signingOut}
+                  >
+                    <LogOut className="mr-2 h-4 w-4" />
+                    {signingOut ? "Signing out…" : "Sign out"}
+                  </Button>
+                </>
+              ) : authStatus === "unauthenticated" ? (
+                <>
+                  <Link to="/login" onClick={() => setMobileMenuOpen(false)}>
+                    <Button variant="outline" className="w-full rounded-full">{t('nav.login')}</Button>
+                  </Link>
+                  <Link to="/signup" onClick={() => setMobileMenuOpen(false)}>
+                    <Button className="w-full rounded-full bg-gradient-primary text-primary-foreground">{t('nav.signup')}</Button>
+                  </Link>
+                </>
+              ) : null}
+              {authError ? <p className="text-sm text-destructive" role="alert">{authError}</p> : null}
             </div>
           </SheetContent>
         </Sheet>

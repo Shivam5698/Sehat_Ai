@@ -1,4 +1,4 @@
-﻿import { createFileRoute, redirect } from "@tanstack/react-router";
+import { createFileRoute } from "@tanstack/react-router";
 import { motion } from "framer-motion";
 import {
   Mic,
@@ -10,7 +10,6 @@ import {
   Activity,
   ShieldAlert,
   AlertTriangle,
-  Brain,
   Stethoscope,
   Sparkles,
   Send,
@@ -21,13 +20,16 @@ import { Button } from "@/components/ui/button";
 import { SectionHeading } from "@/components/shared/SectionHeading";
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { authStorage, consultationAPI, videoAPI } from "@/services/api/client";
+import { consultationAPI, videoAPI } from "@/services/api/client";
+import { AiDoctorWorkflow } from "@/lib/ai-doctor-workflow";
+import { ApiError, type AIDoctorSymptom, type AIDoctorTranscriptRequest } from "@/types/aiDoctor";
 
 type ConversationMessage = {
-  speaker: "patient" | "ai";
+  speaker: "patient";
   text: string;
   language: string;
   timestamp: string;
+  delivery: "sending" | "sent" | "not-sent" | "unconfirmed";
 };
 
 type RecognitionResultEvent = {
@@ -58,65 +60,80 @@ declare global {
 export const Route = createFileRoute("/ai-doctor")({
   head: () => ({
     meta: [
-      { title: "AI Doctor — Live Consultation | Sehat AI" },
+      { title: "AI Doctor Text Consultation | Sehat AI" },
       {
         name: "description",
-        content: "Real-time AI doctor with voice, video, and instant symptom analysis.",
+        content:
+          "Text consultation with optional browser voice input. Assessment availability depends on validated backend services.",
       },
-      { property: "og:title", content: "AI Doctor — Sehat AI" },
-      { property: "og:description", content: "Speak with an AI doctor in real-time." },
+      { property: "og:title", content: "AI Doctor Text Consultation — Sehat AI" },
+      {
+        property: "og:description",
+        content: "Text consultation with optional browser voice input and validated backend responses.",
+      },
     ],
   }),
-  beforeLoad: () => {
-    if (typeof window !== "undefined" && !authStorage.isAuthenticated()) {
-      throw redirect({ to: "/login" });
-    }
-  },
   component: AiDoctorPage,
 });
 
 function AiDoctorPage() {
-  const [muted, setMuted] = useState(false);
-  const [camOn, setCamOn] = useState(true);
+  return <AiDoctorConsultation />;
+}
+
+function AiDoctorConsultation() {
+  const [muted, setMuted] = useState(true);
+  const [camOn, setCamOn] = useState(false);
   const [mediaStream, setMediaStream] = useState<MediaStream | null>(null);
   const [cameraLoading, setCameraLoading] = useState(false);
   const [isListening, setIsListening] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
-  const [isSpeaking, setIsSpeaking] = useState(false);
   const [callState, setCallState] = useState<
-    "idle" | "connecting" | "connected" | "ending" | "ended"
+    "idle" | "connecting" | "connected" | "ending" | "ended" | "error"
   >("idle");
   const [callError, setCallError] = useState("");
+  const [deviceError, setDeviceError] = useState("");
+  const [avatarError, setAvatarError] = useState("");
+  const [submissionError, setSubmissionError] = useState("");
+  const [retryableMessage, setRetryableMessage] = useState<{
+    text: string;
+    history: AIDoctorTranscriptRequest["history"];
+    timestamp: string;
+  } | null>(null);
   const [draft, setDraft] = useState("");
   const [messages, setMessages] = useState<ConversationMessage[]>([]);
   const messagesRef = useRef<ConversationMessage[]>([]);
   const [consultationId, setConsultationId] = useState("");
-  const [avatarStreamUrl, setAvatarStreamUrl] = useState("");
-  const [avatarVideoUrl, setAvatarVideoUrl] = useState("");
   const [riskScore, setRiskScore] = useState<number | null>(null);
   const [riskLevel, setRiskLevel] = useState("");
-  const [detectedSymptoms, setDetectedSymptoms] = useState<string[]>([]);
+  const [detectedSymptoms, setDetectedSymptoms] = useState<AIDoctorSymptom[]>([]);
+  const [recommendations, setRecommendations] = useState<string[]>([]);
+  const [emergencyMessage, setEmergencyMessage] = useState("");
+  const [assessmentReceived, setAssessmentReceived] = useState(false);
   const videoRef = useRef<HTMLVideoElement | null>(null);
-  const avatarVideoRef = useRef<HTMLVideoElement | null>(null);
-  const audioRef = useRef<HTMLAudioElement | null>(null);
   const recognitionRef = useRef<SpeechRecognitionInstance | null>(null);
   const mediaStreamRef = useRef<MediaStream | null>(null);
   const consultationIdRef = useRef("");
-  const videoSessionIdRef = useRef("");
+  const workflowRef = useRef<AiDoctorWorkflow | null>(null);
   const callActiveRef = useRef(false);
-  const mutedRef = useRef(false);
+  const mountedRef = useRef(false);
+  const mutedRef = useRef(true);
   const processingRef = useRef(false);
+  const retryRequiredRef = useRef(false);
   const { t, i18n } = useTranslation(["common", "ai"]);
+  if (!workflowRef.current) {
+    workflowRef.current = createWorkflow();
+  }
   const voiceInputAvailable =
     typeof window !== "undefined" &&
     Boolean(window.SpeechRecognition || window.webkitSpeechRecognition);
 
   useEffect(() => {
+    mountedRef.current = true;
     return () => {
+      mountedRef.current = false;
       callActiveRef.current = false;
       recognitionRef.current?.stop();
       mediaStreamRef.current?.getTracks().forEach((track) => track.stop());
-      audioRef.current?.pause();
     };
   }, []);
 
@@ -124,85 +141,142 @@ function AiDoctorPage() {
     if (videoRef.current) videoRef.current.srcObject = mediaStream;
   }, [mediaStream]);
 
-  useEffect(() => {
-    if (!avatarVideoRef.current) return;
-    const source = avatarVideoUrl || avatarStreamUrl;
-    if (source) {
-      avatarVideoRef.current.src = source;
-      void avatarVideoRef.current.play().catch((error: unknown) => {
-        console.warn("Avatar video could not autoplay", error);
-      });
-    } else {
-      avatarVideoRef.current.removeAttribute("src");
-      avatarVideoRef.current.load();
-    }
-  }, [avatarStreamUrl, avatarVideoUrl]);
-
-  const processPatientMessage = async (rawText: string) => {
+  const processPatientMessage = async (rawText: string, retry = false) => {
     const text = rawText.trim();
-    if (!text || !consultationIdRef.current || !videoSessionIdRef.current || processingRef.current)
+    const workflow = workflowRef.current;
+    if (!text || !consultationIdRef.current || !workflow || processingRef.current) return;
+    const submissionState = workflow.canSubmit(text);
+    if (!retry && submissionState === "unconfirmed") {
+      setSubmissionError(
+        "We could not confirm the previous request. It may already be saved, so it was not sent again. Please enter a new message to continue.",
+      );
       return;
+    }
+    if (!retry && submissionState === "retry") {
+      setSubmissionError("Use the retry button to safely resend this message.");
+      return;
+    }
+    if (!retry && retryableMessage) {
+      setSubmissionError("Retry or resolve the earlier unsent message before sending another.");
+      return;
+    }
 
     processingRef.current = true;
     setIsProcessing(true);
     setIsListening(false);
-    const patientMessage: ConversationMessage = {
-      speaker: "patient",
-      text,
-      language: i18n.language,
-      timestamp: new Date().toISOString(),
-    };
-    const history = [...messagesRef.current, patientMessage];
-    messagesRef.current = history;
-    setMessages(history);
+    setSubmissionError("");
+    setDetectedSymptoms([]);
+    setRecommendations([]);
+    setRiskScore(null);
+    setRiskLevel("");
+    setEmergencyMessage("");
+    setAssessmentReceived(false);
+    const retryDetails = retry ? retryableMessage : null;
+    const patientMessage: ConversationMessage | null = retry
+      ? null
+      : {
+          speaker: "patient",
+          text,
+          language: i18n.language,
+          timestamp: new Date().toISOString(),
+          delivery: "sending",
+        };
+    const historyMessages = retryDetails?.history ?? [
+      ...messagesRef.current.filter((message) => message.delivery !== "not-sent"),
+      ...(patientMessage ? [patientMessage] : []),
+    ];
+    if (patientMessage) {
+      messagesRef.current = [...messagesRef.current, patientMessage];
+      setMessages(messagesRef.current);
+      setRetryableMessage(null);
+    }
+    const history: AIDoctorTranscriptRequest["history"] = historyMessages?.map(
+      ({ speaker, text: messageText, language, timestamp }) => ({
+        speaker,
+        text: messageText,
+        language,
+        timestamp,
+      }),
+    );
     setDraft("");
 
     try {
-      const transcriptResult = await videoAPI.sendTranscript(
-        consultationIdRef.current,
-        text,
-        i18n.language,
-        history,
-      );
+      const result = await workflow.submit(text, i18n.language, history);
+      if (!mountedRef.current) return;
+      if (result.status === "pending") {
+        setSubmissionError("A message is already being processed. Please wait for it to finish.");
+        return;
+      }
+      if (result.status === "unconfirmed") {
+        setSubmissionError(
+          "We could not confirm the previous request. It may already be saved, so it was not sent again. Please enter a new message to continue.",
+        );
+        return;
+      }
+      if (result.status === "failed") {
+        if (result.error instanceof ApiError && result.error.shouldEscalate) {
+          setEmergencyMessage(
+            result.error.emergencyMessage ||
+              "Emergency escalation was indicated. Contact local emergency services now.",
+          );
+        }
+        const errorText =
+          result.error instanceof ApiError && result.error.status === 401
+            ? "Your sign-in has expired. Sign in again, then retry this message."
+            : result.error instanceof ApiError && result.error.status >= 500
+              ? result.error.message
+              : result.error instanceof ApiError
+                ? result.error.message
+                : "We couldn't get a response from the AI service.";
+        setSubmissionError(
+          result.retryable
+            ? errorText
+            : `${errorText} This message may already be saved and will not be sent again.`,
+        );
+        const failedTimestamp = retryDetails?.timestamp ?? patientMessage?.timestamp;
+        if (failedTimestamp) {
+          const delivery: ConversationMessage["delivery"] = result.retryable
+            ? "not-sent"
+            : "unconfirmed";
+          const updatedMessages = messagesRef.current.map((message) =>
+            message.timestamp === failedTimestamp ? { ...message, delivery } : message,
+          );
+          messagesRef.current = updatedMessages;
+          setMessages(updatedMessages);
+          if (result.retryable && patientMessage) {
+            setRetryableMessage({ text, history, timestamp: patientMessage.timestamp });
+            retryRequiredRef.current = true;
+          }
+        }
+        if (retry && !result.retryable) {
+          setRetryableMessage(null);
+          retryRequiredRef.current = false;
+        }
+        return;
+      }
       if (!callActiveRef.current) return;
-      const assessment = transcriptResult?.validatedResponse;
-      const recommendations = Array.isArray(assessment?.recommendations)
-        ? assessment.recommendations.filter(
-            (item: unknown): item is string => typeof item === "string" && item.trim().length > 0,
-          )
-        : [];
-      const symptoms = Array.isArray(assessment?.symptoms)
-        ? assessment.symptoms
-            .map((item: unknown) => {
-              if (typeof item === "string") return item;
-              if (
-                typeof item === "object" &&
-                item !== null &&
-                "name" in item &&
-                typeof item.name === "string"
-              )
-                return item.name;
-              return "";
-            })
-            .filter((item: string) => item.length > 0)
-        : [];
-      setDetectedSymptoms(symptoms);
-      const responseText =
-        assessment?.shouldEscalate === true && typeof assessment.emergencyMessage === "string"
-          ? assessment.emergencyMessage
-          : recommendations.length
-            ? recommendations.join(" ")
-            : symptoms.length
-              ? `I've noted ${symptoms.join(", ")}. Could you tell me when these symptoms started and how they are affecting you?`
-              : "Thank you for sharing that. Could you tell me when this started and how severe it feels?";
-      const aiMessage: ConversationMessage = {
-        speaker: "ai",
-        text: responseText,
-        language: i18n.language,
-        timestamp: new Date().toISOString(),
-      };
-      messagesRef.current = [...messagesRef.current, aiMessage];
-      setMessages((current) => [...current, aiMessage]);
+      const assessment = result.response.validatedResponse;
+      const sentTimestamp = retryDetails?.timestamp ?? patientMessage?.timestamp;
+      if (sentTimestamp) {
+        const updatedMessages = messagesRef.current.map((message) =>
+          message.timestamp === sentTimestamp ? { ...message, delivery: "sent" as const } : message,
+        );
+        messagesRef.current = updatedMessages;
+        setMessages(updatedMessages);
+      }
+      setRetryableMessage(null);
+      retryRequiredRef.current = false;
+      setDetectedSymptoms(Array.isArray(assessment.symptoms) ? assessment.symptoms : []);
+      setRecommendations(
+        Array.isArray(assessment.recommendations) ? assessment.recommendations : [],
+      );
+      setEmergencyMessage(
+        assessment.shouldEscalate === true
+          ? typeof assessment.emergencyMessage === "string"
+            ? assessment.emergencyMessage
+            : "Emergency escalation was indicated. Contact local emergency services now."
+          : "",
+      );
       setRiskScore(
         typeof assessment?.riskAssessment?.riskScore === "number"
           ? assessment.riskAssessment.riskScore
@@ -213,45 +287,26 @@ function AiDoctorPage() {
           ? assessment.riskAssessment.level
           : "",
       );
-
-      setIsSpeaking(true);
-      const speechResult = await videoAPI.avatarSpeak(
-        videoSessionIdRef.current,
-        responseText,
-        "neutral",
-        i18n.language,
-      );
-      if (!callActiveRef.current) return;
-      const speech = speechResult?.response;
-      if (typeof speech?.videoUrl === "string" && speech.videoUrl)
-        setAvatarVideoUrl(speech.videoUrl);
-      if (typeof speech?.audioUrl === "string" && speech.audioUrl) {
-        audioRef.current?.pause();
-        const audio = new Audio(speech.audioUrl);
-        audioRef.current = audio;
-        audio.onended = () => {
-          setIsSpeaking(false);
-          setAvatarVideoUrl("");
-        };
-        audio.onerror = () => {
-          setIsSpeaking(false);
-          setAvatarVideoUrl("");
-          setCallError("The avatar response was generated, but its audio could not be played.");
-        };
-        await audio.play();
-      } else {
-        setIsSpeaking(false);
-        setCallError("The AI replied, but the avatar did not return playable audio.");
-      }
+      setAssessmentReceived(true);
+      setSubmissionError("");
     } catch (error) {
-      setCallError(error instanceof Error ? error.message : "Could not process your message.");
-      setIsSpeaking(false);
+      setSubmissionError(
+        error instanceof ApiError ? error.message : "We couldn't submit your message.",
+      );
     } finally {
       processingRef.current = false;
-      setIsProcessing(false);
-      if (callActiveRef.current && !mutedRef.current) {
-        window.setTimeout(() => startVoiceCapture(), 300);
+      if (mountedRef.current) {
+        setIsProcessing(false);
+        if (callActiveRef.current && !mutedRef.current && !retryRequiredRef.current) {
+          window.setTimeout(() => startVoiceCapture(), 300);
+        }
       }
+    }
+  };
+
+  const retryPatientMessage = () => {
+    if (retryableMessage && workflowRef.current?.canRetry(retryableMessage.text)) {
+      void processPatientMessage(retryableMessage.text, true);
     }
   };
 
@@ -260,12 +315,15 @@ function AiDoctorPage() {
       !callActiveRef.current ||
       mutedRef.current ||
       processingRef.current ||
+      retryRequiredRef.current ||
       recognitionRef.current
     )
       return;
     const Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (!Recognition) {
-      setCallError("Voice input is not supported in this browser. You can type a message below.");
+      setDeviceError(
+        "Voice input is not supported in this browser. You can type a message instead.",
+      );
       return;
     }
 
@@ -286,7 +344,7 @@ function AiDoctorPage() {
     };
     recognition.onerror = (event) => {
       if (event.error !== "no-speech" && event.error !== "aborted") {
-        setCallError(`Voice input failed: ${event.error}. You can type a message instead.`);
+        setDeviceError(`Voice input failed: ${event.error}. You can type a message instead.`);
       }
     };
     recognition.onend = () => {
@@ -299,105 +357,65 @@ function AiDoctorPage() {
     recognitionRef.current = recognition;
     try {
       recognition.start();
-      setCallError("");
+      setDeviceError("");
       setIsListening(true);
-    } catch (error) {
+    } catch {
       recognitionRef.current = null;
-      setCallError(error instanceof Error ? error.message : "Could not start voice input.");
+      setDeviceError("Could not start voice input. You can type a message instead.");
     }
   };
 
   const startCall = async () => {
     if (callState === "connecting" || callState === "connected") return;
+    if (callState === "error" && !workflowRef.current?.canRetryStart()) return;
+    if (callState === "ended") workflowRef.current = createWorkflow();
     setCallError("");
+    setDeviceError("");
+    setAvatarError("");
+    setSubmissionError("");
     setCallState("connecting");
-    setCameraLoading(true);
-    mutedRef.current = false;
-    setMuted(false);
-    setCamOn(true);
+    setCameraLoading(false);
+    mutedRef.current = true;
+    setMuted(true);
+    setCamOn(false);
     messagesRef.current = [];
     setMessages([]);
     setRiskScore(null);
     setRiskLevel("");
     setDetectedSymptoms([]);
-    setAvatarStreamUrl("");
-    setAvatarVideoUrl("");
-    let newConsultationId = "";
-    let newVideoSessionId = "";
+    setRecommendations([]);
+    setEmergencyMessage("");
+    setAssessmentReceived(false);
+    retryRequiredRef.current = false;
     try {
-      if (navigator.mediaDevices?.getUserMedia) {
-        try {
-          const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
-          mediaStreamRef.current = stream;
-          setMediaStream(stream);
-        } catch (mediaError) {
-          setCallError(
-            mediaError instanceof Error
-              ? `Camera/microphone access was denied. You can still type messages: ${mediaError.message}`
-              : "Camera/microphone access was denied. You can still type messages.",
-          );
-        }
-      } else {
-        setCallError("Camera and microphone are unavailable. You can still type messages.");
-      }
-
-      const consultationResult = await consultationAPI.start(i18n.language);
-      newConsultationId = consultationResult?.session?.id;
-      if (typeof newConsultationId !== "string" || !newConsultationId) {
-        throw new Error("The consultation could not be created.");
-      }
-      consultationIdRef.current = newConsultationId;
-      setConsultationId(newConsultationId);
-
-      const sessionResult = await videoAPI.initializeSession(newConsultationId, "");
-      newVideoSessionId = sessionResult?.sessionId;
-      if (typeof newVideoSessionId !== "string" || !newVideoSessionId) {
-        throw new Error("The AI avatar session could not be created.");
-      }
-      videoSessionIdRef.current = newVideoSessionId;
-      if (typeof sessionResult.streamUrl === "string") setAvatarStreamUrl(sessionResult.streamUrl);
-      await videoAPI.startStream(newVideoSessionId);
+      const activeWorkflow = workflowRef.current;
+      const startResult = await activeWorkflow?.start(i18n.language);
+      if (!mountedRef.current) return;
+      if (!startResult) throw new Error("The consultation could not be created.");
+      consultationIdRef.current = startResult.consultationId;
+      setConsultationId(startResult.consultationId);
       callActiveRef.current = true;
       setCallState("connected");
-      startVoiceCapture();
+      setAvatarError(
+        "Avatar unavailable: a verified approved-response integration is not configured. Text consultation is active.",
+      );
     } catch (error) {
       callActiveRef.current = false;
       recognitionRef.current?.stop();
       recognitionRef.current = null;
       mediaStreamRef.current?.getTracks().forEach((track) => track.stop());
       mediaStreamRef.current = null;
+      if (!mountedRef.current) return;
       setMediaStream(null);
       setCameraLoading(false);
-      const cleanupErrors: string[] = [];
-      if (newVideoSessionId) {
-        try {
-          await videoAPI.endSession(newVideoSessionId);
-        } catch (cleanupError) {
-          cleanupErrors.push(
-            cleanupError instanceof Error ? cleanupError.message : "Avatar session cleanup failed.",
-          );
-        }
-      }
-      if (newConsultationId) {
-        try {
-          await consultationAPI.end(newConsultationId);
-        } catch (cleanupError) {
-          cleanupErrors.push(
-            cleanupError instanceof Error ? cleanupError.message : "Consultation cleanup failed.",
-          );
-        }
-      }
-      const message =
-        error instanceof Error ? error.message : "Could not start the AI consultation.";
       setCallError(
-        cleanupErrors.length ? `${message} Cleanup issue: ${cleanupErrors.join("; ")}` : message,
+        error instanceof ApiError && error.status === 401
+          ? "Your sign-in has expired. Sign in again, then retry consultation setup."
+          : "We couldn't confirm that the consultation started. It won't be retried automatically to avoid creating a duplicate.",
       );
-      videoSessionIdRef.current = "";
-      consultationIdRef.current = "";
-      setConsultationId("");
-      setCallState("idle");
+      setCallState("error");
     } finally {
-      setCameraLoading(false);
+      if (mountedRef.current) setCameraLoading(false);
     }
   };
 
@@ -407,31 +425,23 @@ function AiDoctorPage() {
     callActiveRef.current = false;
     recognitionRef.current?.stop();
     recognitionRef.current = null;
-    audioRef.current?.pause();
-    setIsSpeaking(false);
     mediaStreamRef.current?.getTracks().forEach((track) => track.stop());
     mediaStreamRef.current = null;
     setMediaStream(null);
 
-    const results = await Promise.allSettled([
-      videoSessionIdRef.current
-        ? videoAPI.endSession(videoSessionIdRef.current)
-        : Promise.resolve(),
-      consultationIdRef.current
-        ? consultationAPI.end(consultationIdRef.current)
-        : Promise.resolve(),
-    ]);
-    const failures = results
-      .filter((result): result is PromiseRejectedResult => result.status === "rejected")
-      .map((result) =>
-        result.reason instanceof Error ? result.reason.message : "A session could not be ended.",
-      );
+    const results = await Promise.allSettled(
+      consultationIdRef.current ? [consultationAPI.end(consultationIdRef.current)] : [],
+    );
+    if (!mountedRef.current) return;
+    const failures = results.flatMap((result) =>
+      result.status === "rejected"
+        ? [result.reason instanceof Error ? result.reason.message : "A session could not be ended."]
+        : [],
+    );
     setCallError(failures.length ? failures.join("; ") : "");
-    videoSessionIdRef.current = "";
     consultationIdRef.current = "";
     setConsultationId("");
-    setAvatarStreamUrl("");
-    setAvatarVideoUrl("");
+    setAvatarError("");
     setDetectedSymptoms([]);
     setCallState("ended");
     setIsListening(false);
@@ -441,9 +451,7 @@ function AiDoctorPage() {
     const nextMuted = !mutedRef.current;
     mutedRef.current = nextMuted;
     setMuted(nextMuted);
-    mediaStreamRef.current?.getAudioTracks().forEach((track) => {
-      track.enabled = !nextMuted;
-    });
+    setDeviceError("");
     if (nextMuted) {
       recognitionRef.current?.stop();
       recognitionRef.current = null;
@@ -453,14 +461,43 @@ function AiDoctorPage() {
     }
   };
 
-  const handleToggleCam = () => {
-    setCamOn((current) => {
-      const nextOn = !current;
-      mediaStreamRef.current?.getVideoTracks().forEach((track) => {
-        track.enabled = nextOn;
-      });
-      return nextOn;
-    });
+  const handleToggleCam = async () => {
+    if (camOn) {
+      mediaStreamRef.current?.getTracks().forEach((track) => track.stop());
+      mediaStreamRef.current = null;
+      setMediaStream(null);
+      setCamOn(false);
+      return;
+    }
+
+    if (!navigator.mediaDevices?.getUserMedia) {
+      setDeviceError("Camera access is unavailable in this browser.");
+      return;
+    }
+
+    setDeviceError("");
+    setCameraLoading(true);
+    const activeConsultationId = consultationIdRef.current;
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+      if (
+        !mountedRef.current ||
+        !callActiveRef.current ||
+        consultationIdRef.current !== activeConsultationId
+      ) {
+        stream.getTracks().forEach((track) => track.stop());
+        return;
+      }
+      mediaStreamRef.current = stream;
+      setMediaStream(stream);
+      setCamOn(true);
+    } catch {
+      if (mountedRef.current) {
+        setDeviceError("Camera access was not granted. Text consultation is unaffected.");
+      }
+    } finally {
+      if (mountedRef.current) setCameraLoading(false);
+    }
   };
 
   const handleSendMessage = (event: React.FormEvent<HTMLFormElement>) => {
@@ -490,13 +527,13 @@ function AiDoctorPage() {
                   />
                   <span className="text-xs font-semibold uppercase tracking-wider text-primary">
                     {callState === "connecting"
-                      ? "Connecting"
+                      ? "Starting consultation"
                       : callState === "connected"
-                        ? t("ai.liveStatus", "Live")
+                        ? "Consultation active"
                         : "Not connected"}
                   </span>
                   <span className="text-sm text-muted-foreground ml-2">
-                    {t("ai.doctorLabel", "AI Doctor")}
+                    {t("doctorLabel", { ns: "ai" })}
                   </span>
                 </div>
                 <div className="rounded-full bg-background/80 px-3 py-2 text-sm text-foreground border border-border flex items-center gap-1.5">
@@ -508,19 +545,17 @@ function AiDoctorPage() {
                   Camera: {mediaStream && camOn ? "Active" : "Off"}
                 </div>
                 <div className="rounded-full bg-background/80 px-3 py-2 text-foreground border border-border">
-                  Microphone: {!mediaStream ? "Off" : muted ? "Muted" : "Active"}
+                  Microphone: {muted ? "Off" : isListening ? "Active" : "On"}
                 </div>
                 <div className="rounded-full bg-background/80 px-3 py-2 text-foreground border border-border">
                   Status:{" "}
-                  {isSpeaking
-                    ? "AI speaking"
-                    : isProcessing
-                      ? "Processing"
-                      : isListening
-                        ? "Listening"
-                        : callState === "connected"
-                          ? "Ready"
-                          : callState}
+                  {isProcessing
+                    ? "Processing"
+                    : isListening
+                      ? "Listening"
+                      : callState === "connected"
+                        ? "Ready"
+                        : callState}
                 </div>
                 <div className="rounded-full bg-background/80 px-3 py-2 text-foreground border border-border">
                   Risk:{" "}
@@ -532,38 +567,19 @@ function AiDoctorPage() {
             </div>
 
             <div className="relative aspect-video bg-mint">
-              <video
-                ref={avatarVideoRef}
-                autoPlay
-                muted
-                playsInline
-                loop
-                poster={aiDoctor}
+              <img
+                src={aiDoctor}
+                alt="Static illustration; live avatar unavailable"
                 className="absolute inset-0 h-full w-full object-cover"
-                aria-label="AI doctor avatar"
               />
-              {!avatarStreamUrl && !avatarVideoUrl && (
-                <div className="absolute inset-0 grid place-items-end p-4">
-                  <span className="rounded-full bg-background/80 px-3 py-1.5 text-xs text-muted-foreground">
-                    {callState === "connected"
-                      ? "Avatar stream is loading…"
-                      : "Start a consultation to connect your AI doctor"}
-                  </span>
-                </div>
-              )}
-              <div className="absolute bottom-6 left-1/2 -translate-x-1/2 flex items-end gap-1 h-12">
-                {Array.from({ length: 24 }).map((_, i) => (
-                  <motion.span
-                    key={i}
-                    animate={{
-                      height: isSpeaking
-                        ? [`${20 + (i % 5) * 8}%`, `${60 + (i % 4) * 10}%`, `${30 + (i % 6) * 6}%`]
-                        : "12%",
-                    }}
-                    transition={{ duration: 1.2, repeat: Infinity, delay: i * 0.05 }}
-                    className="w-1.5 rounded-full bg-primary-foreground/90"
-                  />
-                ))}
+              <div className="absolute inset-0 grid place-items-end p-4">
+                <span
+                  role="status"
+                  className="rounded-full bg-background/80 px-3 py-1.5 text-xs text-muted-foreground"
+                >
+                  {avatarError ||
+                    "Optional avatar unavailable: provider-approved response presentation is not verified."}
+                </span>
               </div>
               <div className="absolute top-4 right-4 rounded-2xl bg-background/80 backdrop-blur border border-border p-3 w-44 shadow-medical">
                 <div className="text-[10px] uppercase text-muted-foreground">You</div>
@@ -592,7 +608,7 @@ function AiDoctorPage() {
             <div className="p-5 flex items-center justify-center gap-3 border-t border-border">
               <Button
                 onClick={handleToggleMic}
-                disabled={callState !== "connected"}
+                disabled={callState !== "connected" || !voiceInputAvailable}
                 variant={muted ? "destructive" : "secondary"}
                 size="icon"
                 className="rounded-full h-12 w-12"
@@ -601,8 +617,8 @@ function AiDoctorPage() {
                 {muted ? <MicOff className="h-5 w-5" /> : <Mic className="h-5 w-5" />}
               </Button>
               <Button
-                onClick={handleToggleCam}
-                disabled={callState !== "connected"}
+                onClick={() => void handleToggleCam()}
+                disabled={callState !== "connected" || cameraLoading}
                 variant={camOn ? "secondary" : "destructive"}
                 size="icon"
                 className="rounded-full h-12 w-12"
@@ -627,7 +643,10 @@ function AiDoctorPage() {
               ) : (
                 <Button
                   onClick={() => void startCall()}
-                  disabled={callState === "connecting"}
+                  disabled={
+                    callState === "connecting" ||
+                    (callState === "error" && !workflowRef.current?.canRetryStart())
+                  }
                   className="rounded-full h-14 px-5 gap-2"
                 >
                   {callState === "connecting" ? (
@@ -639,46 +658,101 @@ function AiDoctorPage() {
                     ? "Connecting…"
                     : callState === "ended"
                       ? "Start another consultation"
-                      : "Start consultation"}
+                      : callState === "error"
+                        ? "Retry after sign-in"
+                        : "Start consultation"}
                 </Button>
               )}
             </div>
-            {callError && (
+            {(callError || submissionError || deviceError) && (
               <div
                 role="alert"
                 className="mx-5 mb-4 rounded-xl border border-destructive/40 bg-destructive/5 px-4 py-3 text-sm text-destructive"
               >
-                {callError}
+                {callError && <p>{callError}</p>}
+                {submissionError && <p>{submissionError}</p>}
+                {deviceError && <p>{deviceError}</p>}
+                {callState === "error" && workflowRef.current?.canRetryStart() && (
+                  <a
+                    href="/login"
+                    target="_blank"
+                    rel="noreferrer"
+                    className="mt-2 inline-block underline"
+                  >
+                    Sign in in another tab
+                  </a>
+                )}
+                {retryableMessage && (
+                  <div className="mt-3 flex flex-wrap items-center gap-3">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      disabled={isProcessing}
+                      onClick={retryPatientMessage}
+                    >
+                      Retry message
+                    </Button>
+                    <a href="/login" target="_blank" rel="noreferrer" className="underline">
+                      Sign in in another tab
+                    </a>
+                  </div>
+                )}
               </div>
             )}
 
             <div className="p-5 border-t border-border bg-section">
               <div className="text-xs font-semibold uppercase tracking-wider text-primary mb-3 flex items-center gap-2">
-                <Sparkles className="h-3.5 w-3.5" /> {t("ai.liveTranscript")}
+                <Sparkles className="h-3.5 w-3.5" /> {t("liveTranscript", { ns: "ai" })}
               </div>
               <div className="space-y-3 max-h-48 overflow-y-auto">
                 {messages.length ? (
                   messages.map((message, index) => (
-                    <Bubble
-                      key={`${message.timestamp}-${index}`}
-                      who={message.speaker === "ai" ? t("who.aiDoctor") : t("who.you")}
-                      text={message.text}
-                      mine={message.speaker === "patient"}
-                    />
+                    <div key={`${message.timestamp}-${index}`} className="space-y-1">
+                      <Bubble who={t("who.you")} text={message.text} mine />
+                      {message.delivery !== "sent" && (
+                        <p className="text-right text-xs text-muted-foreground">
+                          {message.delivery === "sending"
+                            ? "Sending…"
+                            : message.delivery === "not-sent"
+                              ? "Not sent — authentication required"
+                              : "Delivery not confirmed — not resent"}
+                        </p>
+                      )}
+                    </div>
                   ))
                 ) : (
                   <p className="text-sm text-muted-foreground">
                     {callState === "connected"
-                      ? "Your conversation will appear here."
-                      : "Start a consultation to begin talking with the AI doctor."}
+                      ? "Your messages will appear here. Backend results are shown as structured fields; no assistant-reply text is currently provided."
+                      : "Start a consultation to begin using text or optional voice input."}
                   </p>
                 )}
               </div>
+              {assessmentReceived && (
+                <p className="mt-3 text-xs text-muted-foreground" role="status">
+                  The backend returned a structured assessment. It does not include an
+                  assistant-reply string. Software checks validate response structure only and do
+                  not establish clinical validity.
+                </p>
+              )}
+              <p className="mt-3 text-xs text-muted-foreground">
+                This service cannot prescribe or recommend medicines. For medicine questions, speak
+                with a qualified healthcare professional or pharmacist.
+              </p>
+              {emergencyMessage && (
+                <div
+                  role="alert"
+                  className="mt-3 rounded-xl border border-destructive/40 bg-destructive/5 px-4 py-3 text-sm text-destructive"
+                >
+                  {emergencyMessage}
+                </div>
+              )}
               <form onSubmit={handleSendMessage} className="mt-4 flex gap-2">
                 <input
                   value={draft}
                   onChange={(event) => setDraft(event.target.value)}
-                  disabled={callState !== "connected" || isProcessing}
+                  disabled={callState !== "connected" || isProcessing || Boolean(retryableMessage)}
                   aria-label="Message the AI doctor"
                   placeholder="Type a message if you prefer…"
                   className="min-w-0 flex-1 rounded-full border border-border bg-background px-4 py-2 text-sm outline-none focus:ring-2 focus:ring-primary disabled:opacity-50"
@@ -686,7 +760,12 @@ function AiDoctorPage() {
                 <Button
                   type="submit"
                   size="icon"
-                  disabled={callState !== "connected" || isProcessing || !draft.trim()}
+                  disabled={
+                    callState !== "connected" ||
+                    isProcessing ||
+                    Boolean(retryableMessage) ||
+                    !draft.trim()
+                  }
                   aria-label="Send message"
                 >
                   {isProcessing ? (
@@ -700,26 +779,43 @@ function AiDoctorPage() {
           </div>
 
           <div className="space-y-5">
-            <Panel title={t("ai.panels.detectedSymptoms")} icon={Activity}>
+            <Panel title={t("panels.detectedSymptoms", { ns: "ai" })} icon={Activity}>
               {detectedSymptoms.length ? (
                 <div className="flex flex-wrap gap-2">
-                  {detectedSymptoms.map((symptom) => (
+                  {detectedSymptoms.map((symptom, index) => (
                     <span
-                      key={symptom}
+                      key={`${symptom.id}-${index}`}
                       className="rounded-full bg-mint text-primary text-xs font-medium px-3 py-1.5 border border-border"
                     >
-                      {symptom}
+                      {symptom.name}
+                      <span className="ml-2 text-muted-foreground">
+                        {symptom.reported === true
+                          ? "Patient reported"
+                          : symptom.reported === false
+                            ? "AI interpretation"
+                            : "Provenance unavailable"}
+                      </span>
                     </span>
                   ))}
                 </div>
               ) : (
                 <p className="text-sm text-muted-foreground">
-                  Symptoms will be summarized as you talk with the AI doctor.
+                  No validated symptom summary is available.
                 </p>
               )}
             </Panel>
 
-            <Panel title={t("ai.panels.severityScore")} icon={ShieldAlert}>
+            {recommendations.length > 0 && (
+              <Panel title="Backend recommendations" icon={Sparkles}>
+                <ul className="list-disc space-y-2 pl-5 text-sm">
+                  {recommendations.map((recommendation, index) => (
+                    <li key={`${index}-${recommendation}`}>{recommendation}</li>
+                  ))}
+                </ul>
+              </Panel>
+            )}
+
+            <Panel title={t("panels.severityScore", { ns: "ai" })} icon={ShieldAlert}>
               <div className="flex items-end justify-between">
                 <div>
                   <div className="text-3xl font-bold text-warning">
@@ -741,16 +837,18 @@ function AiDoctorPage() {
               </div>
             </Panel>
 
-            <Panel title={t("ai.panels.activeAgents")} icon={Brain}>
+            <Panel title="Request status" icon={Activity}>
               <div className="flex items-center gap-2 text-sm">
                 <span
                   className={`h-2 w-2 rounded-full ${isProcessing ? "bg-primary animate-pulse" : "bg-muted-foreground"}`}
                 />
                 {isProcessing
-                  ? "Analyzing your message…"
-                  : callState === "connected"
-                    ? "Ready for your message"
-                    : "Not active"}
+                  ? "Submitting text to the consultation service…"
+                  : submissionError
+                    ? "No validated response returned"
+                    : callState === "connected"
+                      ? "Ready to submit text"
+                      : "Consultation not active"}
               </div>
             </Panel>
 
@@ -765,20 +863,28 @@ function AiDoctorPage() {
               )}
             </Panel>
 
-            <div className="rounded-3xl border border-destructive/40 bg-destructive/5 p-5 flex items-center gap-3">
-              <AlertTriangle className="h-5 w-5 text-destructive shrink-0" />
-              <div>
-                <div className="text-sm font-semibold text-destructive">Emergency Escalation</div>
-                <div className="text-xs text-muted-foreground">
-                  If you may be experiencing an emergency, contact local emergency services now.
+            {emergencyMessage && (
+              <div className="rounded-3xl border border-destructive/40 bg-destructive/5 p-5 flex items-center gap-3">
+                <AlertTriangle className="h-5 w-5 text-destructive shrink-0" />
+                <div>
+                  <div className="text-sm font-semibold text-destructive">Emergency Escalation</div>
+                  <div className="text-xs text-muted-foreground">{emergencyMessage}</div>
                 </div>
               </div>
-            </div>
+            )}
           </div>
         </div>
       </div>
     </>
   );
+}
+
+function createWorkflow() {
+  return new AiDoctorWorkflow({
+    startConsultation: (language) => consultationAPI.start(language),
+    sendTranscript: (consultationId, text, language, history) =>
+      videoAPI.sendTranscript(consultationId, text, language, history),
+  });
 }
 
 function Panel({

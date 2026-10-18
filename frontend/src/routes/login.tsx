@@ -1,4 +1,4 @@
-﻿import { createFileRoute, Link, useNavigate, redirect } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate, redirect } from "@tanstack/react-router";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -17,8 +17,8 @@ export const Route = createFileRoute("/login")({
       { property: "og:description", content: "Sign in to your Sehat AI account." },
     ],
   }),
-  beforeLoad: () => {
-    if (typeof window !== "undefined" && authStorage.isAuthenticated()) {
+  beforeLoad: async () => {
+    if (typeof window !== "undefined" && (await authAPI.hasValidSession())) {
       throw redirect({ to: "/ai-doctor" });
     }
   },
@@ -40,11 +40,7 @@ function LoginPage() {
 
     try {
       const result = await authAPI.login({ email, password });
-      authStorage.setSession({
-        accessToken: result.accessToken,
-        refreshToken: result.refreshToken,
-        user: result.user,
-      });
+      authStorage.setSession({ user: result.user });
       navigate({ to: "/ai-doctor" });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unable to sign in");
@@ -67,18 +63,18 @@ function LoginPage() {
           </div>
           <div className="space-y-3">
             <div>
-              <Label htmlFor="email">{t('form.email')}</Label>
-              <Input id="email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder={t('form.emailPlaceholder')} className="mt-1.5 rounded-xl" required />
+              <Label htmlFor="email">{t('form.email', { ns: 'auth' })}</Label>
+              <Input id="email" type="email" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder={t('form.emailPlaceholder', { ns: 'auth' })} className="mt-1.5 rounded-xl" required />
             </div>
             <div>
-              <Label htmlFor="password">{t('form.password')}</Label>
-              <Input id="password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder={t('form.passwordPlaceholder')} className="mt-1.5 rounded-xl" required />
+              <Label htmlFor="password">{t('form.password', { ns: 'auth' })}</Label>
+              <Input id="password" type="password" autoComplete="current-password" minLength={8} value={password} onChange={(e) => setPassword(e.target.value)} placeholder={t('form.passwordPlaceholder', { ns: 'auth' })} className="mt-1.5 rounded-xl" required />
             </div>
           </div>
           {error ? <p className="text-sm text-destructive">{error}</p> : null}
           <Button type="submit" disabled={submitting} className="w-full rounded-full bg-gradient-primary text-primary-foreground shadow-medical h-11">{submitting ? t('buttons.loading') || 'Signing in...' : t('buttons.signIn')}</Button>
           <p className="text-sm text-muted-foreground text-center">
-            {t('auth.newHere')} <Link to="/signup" className="text-primary font-semibold">{t('auth.createAccount')}</Link>
+            {t('newHere', { ns: 'auth' })} <Link to="/signup" className="text-primary font-semibold">{t('createAccount', { ns: 'auth' })}</Link>
           </p>
         </form>
       </div>

@@ -33,6 +33,13 @@ export interface Transcript {
   timestamp: Date;
 }
 
+export interface TranscriptHistoryEntry {
+  speaker: 'patient' | 'ai' | 'system';
+  text: string;
+  language?: string;
+  timestamp?: string | Date;
+}
+
 export interface ConversationContext {
   consultationId: string;
   language: string;

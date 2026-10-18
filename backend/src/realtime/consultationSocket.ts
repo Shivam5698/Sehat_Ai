@@ -1,7 +1,7 @@
 import { Server, Socket } from 'socket.io';
+import { getSocketUserId } from './socketAuth.js';
 import { prisma } from '../database/client.js';
 import { AudioStreamProcessor } from '../services/mediaService.js';
-import { TruGenService } from '../services/trugenService.js';
 import { ConversationContext, Transcript } from '../types/consultation.js';
 import { config } from '../config/index.js';
 import { createRedisPublisher } from '../database/redisClient.js';
@@ -12,7 +12,8 @@ import { DashboardEventsService } from '../video/dashboard-events/dashboardEvent
 import { EmergencyService } from '../video/emergency/emergency.service.js';
 import { AIGatewayService } from '../integrations/ai-gateway/aiGateway.service.js';
 import { SpeechService } from '../video/stt/speech.service.js';
-import { SpeechGenerationService } from '../video/tts/speech-generation.service.js';
+import { InvalidAIResponseError, safeErrorName } from '../services/aiResponseBoundary.js';
+import { ACCESS_TOKEN_COOKIE, getCookieValue } from '../middleware/authCookies.js';
 
 interface ConsultationSession {
   consultationId: string;
@@ -23,15 +24,12 @@ interface ConsultationSession {
   audioProcessor: AudioStreamProcessor;
   transcripts: Transcript[];
   isProcessing: boolean;
-  avatarSessionId?: string;
 }
 
 const activeSessions = new Map<string, ConsultationSession>();
 
 export function initConsultationSocket(io: Server) {
   const sttService = new SpeechService();
-  const ttsService = new SpeechGenerationService();
-  const trugenService = new TruGenService(config.trugen.apiKey, config.trugen.baseUrl, config.trugen.region);
   const aiGateway = new AIGatewayService();
   const redisPublisher = createRedisPublisher();
   const videoSessionManager = new VideoSessionManager();
@@ -39,6 +37,19 @@ export function initConsultationSocket(io: Server) {
   const webrtcService = new WebRTCService(io);
   const dashboardEvents = new DashboardEventsService(io);
   const emergencyService = new EmergencyService();
+
+  io.use((socket, next) => {
+    const token =
+      getCookieValue(socket.handshake.headers.cookie, ACCESS_TOKEN_COOKIE) ??
+      socket.handshake.auth?.token;
+    const userId = getSocketUserId(token, config.jwtSecret);
+    if (!userId) {
+      next(new Error('Authentication required'));
+      return;
+    }
+    socket.data.userId = userId;
+    next();
+  });
 
   io.on('connection', (socket: Socket) => {
     console.log('[SOCKET] Client connected:', socket.id);
@@ -49,15 +60,10 @@ export function initConsultationSocket(io: Server) {
 
     socket.on('consultation:start', async (payload) => {
       try {
-        const { consultationId, userId, language = 'en' } = payload;
-
-        // Validate consultation exists
-        const consultation = await prisma.consultation.findUnique({
-          where: { id: consultationId },
-        });
-
-        if (!consultation) {
-          socket.emit('consultation:error', { message: 'Consultation not found' });
+        const { consultationId, language = 'en' } = payload;
+        const userId = socket.data.userId;
+        if (typeof userId !== 'string' || !(await socketOwnsConsultation(socket, consultationId))) {
+          socket.emit('consultation:error', { message: 'Unauthorized' });
           return;
         }
 
@@ -109,10 +115,14 @@ export function initConsultationSocket(io: Server) {
 
     socket.on('consultation:join', async (payload) => {
       try {
-        const { consultationId, socketId } = payload;
-        await videoSessionManager.joinSession(consultationId, socketId || socket.id);
+        const { consultationId } = payload;
+        if (!(await socketOwnsConsultation(socket, consultationId))) {
+          socket.emit('consultation:error', { message: 'Unauthorized' });
+          return;
+        }
+        await videoSessionManager.joinSession(consultationId, socket.id);
         socket.join(consultationId);
-        socketService.emit(consultationId, 'consultation_joined', { consultationId, socketId: socketId || socket.id });
+        socketService.emit(consultationId, 'consultation_joined', { consultationId, socketId: socket.id });
       } catch (error) {
         console.error('[SOCKET] Consultation join error:', error);
         socket.emit('consultation:error', { message: 'Failed to join consultation' });
@@ -121,10 +131,14 @@ export function initConsultationSocket(io: Server) {
 
     socket.on('consultation:leave', async (payload) => {
       try {
-        const { consultationId, socketId } = payload;
-        await videoSessionManager.leaveSession(consultationId, socketId || socket.id);
+        const { consultationId } = payload;
+        if (!(await socketOwnsConsultation(socket, consultationId))) {
+          socket.emit('consultation:error', { message: 'Unauthorized' });
+          return;
+        }
+        await videoSessionManager.leaveSession(consultationId, socket.id);
         socket.leave(consultationId);
-        socketService.emit(consultationId, 'consultation_left', { consultationId, socketId: socketId || socket.id });
+        socketService.emit(consultationId, 'consultation_left', { consultationId, socketId: socket.id });
       } catch (error) {
         console.error('[SOCKET] Consultation leave error:', error);
         socket.emit('consultation:error', { message: 'Failed to leave consultation' });
@@ -133,10 +147,14 @@ export function initConsultationSocket(io: Server) {
 
     socket.on('consultation:reconnect', async (payload) => {
       try {
-        const { consultationId, socketId } = payload;
-        await videoSessionManager.reconnectSession(consultationId, socketId || socket.id);
+        const { consultationId } = payload;
+        if (!(await socketOwnsConsultation(socket, consultationId))) {
+          socket.emit('consultation:error', { message: 'Unauthorized' });
+          return;
+        }
+        await videoSessionManager.reconnectSession(consultationId, socket.id);
         socket.join(consultationId);
-        socketService.emit(consultationId, 'consultation_reconnected', { consultationId, socketId: socketId || socket.id });
+        socketService.emit(consultationId, 'consultation_reconnected', { consultationId, socketId: socket.id });
       } catch (error) {
         console.error('[SOCKET] Consultation reconnect error:', error);
         socket.emit('consultation:error', { message: 'Failed to reconnect consultation' });
@@ -146,6 +164,7 @@ export function initConsultationSocket(io: Server) {
     socket.on('consultation:heartbeat', async (payload) => {
       try {
         const { consultationId } = payload;
+        if (!(await socketOwnsConsultation(socket, consultationId))) return;
         socketService.emit(consultationId, 'consultation:heartbeat', { timestamp: new Date() });
       } catch (error) {
         console.error('[SOCKET] Consultation heartbeat error:', error);
@@ -157,17 +176,12 @@ export function initConsultationSocket(io: Server) {
         const { consultationId } = payload;
         const session = activeSessions.get(consultationId);
 
-        if (!session) {
-          socket.emit('consultation:error', { message: 'Session not found' });
+        if (!session || session.userId !== socket.data.userId) {
+          socket.emit('consultation:error', { message: 'Unauthorized' });
           return;
         }
 
         session.status = 'ended';
-
-        // End avatar session if exists
-        if (session.avatarSessionId) {
-          await trugenService.endSession(session.avatarSessionId);
-        }
 
         await videoSessionManager.endSession(consultationId);
 
@@ -204,7 +218,7 @@ export function initConsultationSocket(io: Server) {
     socket.on('audio:stream', async (payload) => {
       try {
         const { consultationId, chunk } = payload;
-        const session = activeSessions.get(consultationId);
+        const session = getOwnedActiveSession(socket, consultationId);
 
         if (!session || session.status !== 'active') {
           socket.emit('audio:error', { message: 'Session not active' });
@@ -231,7 +245,7 @@ export function initConsultationSocket(io: Server) {
     socket.on('audio:flush', async (payload) => {
       try {
         const { consultationId } = payload;
-        const session = activeSessions.get(consultationId);
+        const session = getOwnedActiveSession(socket, consultationId);
 
         if (!session) return;
 
@@ -253,6 +267,7 @@ export function initConsultationSocket(io: Server) {
     socket.on('webrtc:offer', async (payload) => {
       try {
         const { consultationId, offer } = payload;
+        if (!(await socketOwnsConsultation(socket, consultationId))) return;
         webrtcService.handleOffer(consultationId, socket.id, offer);
         console.log(`[SOCKET] WebRTC offer from ${socket.id}`);
       } catch (error) {
@@ -263,6 +278,7 @@ export function initConsultationSocket(io: Server) {
     socket.on('webrtc:answer', async (payload) => {
       try {
         const { consultationId, answer, toSocketId } = payload;
+        if (!(await socketOwnsConsultation(socket, consultationId))) return;
         webrtcService.handleAnswer(consultationId, socket.id, answer, toSocketId);
         console.log(`[SOCKET] WebRTC answer from ${socket.id}`);
       } catch (error) {
@@ -273,6 +289,7 @@ export function initConsultationSocket(io: Server) {
     socket.on('webrtc:ice-candidate', async (payload) => {
       try {
         const { consultationId, candidate } = payload;
+        if (!(await socketOwnsConsultation(socket, consultationId))) return;
         webrtcService.handleIceCandidate(consultationId, socket.id, candidate);
       } catch (error) {
         console.error('[SOCKET] ICE candidate error:', error);
@@ -282,6 +299,7 @@ export function initConsultationSocket(io: Server) {
     socket.on('webrtc:connected', async (payload) => {
       try {
         const { consultationId } = payload;
+        if (!(await socketOwnsConsultation(socket, consultationId))) return;
         webrtcService.notifyConnectionStatus(consultationId, 'connected');
       } catch (error) {
         console.error('[SOCKET] WebRTC connected error:', error);
@@ -292,83 +310,16 @@ export function initConsultationSocket(io: Server) {
     // AVATAR MANAGEMENT
     // ======================
 
-    socket.on('avatar:init', async (payload) => {
-      try {
-        const { consultationId, avatarId } = payload;
-        const session = activeSessions.get(consultationId);
-
-        if (!session) {
-          socket.emit('avatar:error', { message: 'Session not found' });
-          return;
-        }
-
-        // Create TruGen session
-        const trugenSession = await trugenService.createSession(consultationId, {
-          avatarId,
-          language: session.language,
-          quality: 'high',
-        });
-
-        session.avatarSessionId = trugenSession.id;
-
-        // Start streaming
-        await trugenService.startStreaming(trugenSession.id);
-
-        // Emit success
-        io.to(consultationId).emit('avatar:initialized', {
-          sessionId: trugenSession.id,
-          streamUrl: trugenSession.streamUrl,
-        });
-
-        console.log(`[SOCKET] Avatar initialized for consultation: ${consultationId}`);
-      } catch (error) {
-        console.error('[SOCKET] Avatar init error:', error);
-        socket.emit('avatar:error', { message: 'Failed to initialize avatar' });
-      }
+    socket.on('avatar:init', () => {
+      socket.emit('avatar:error', {
+        message: 'Avatar unavailable until an approved-response integration is verified.',
+      });
     });
 
-    socket.on('avatar:speak', async (payload) => {
-      try {
-        const { consultationId, text, emotion = 'neutral' } = payload;
-        const session = activeSessions.get(consultationId);
-
-        if (!session || !session.avatarSessionId) {
-          socket.emit('avatar:error', { message: 'Avatar session not active' });
-          return;
-        }
-
-        const response = await trugenService.generateSpeechWithEmotion(
-          session.avatarSessionId,
-          text,
-          session.language,
-          emotion
-        );
-
-        const generatedSpeech = await ttsService.generateAudio(text, session.language);
-        await ttsService.streamToAvatar(session.avatarSessionId, generatedSpeech.audioBuffer);
-
-        io.to(consultationId).emit('avatar:speaking', {
-          videoUrl: response.videoUrl,
-          audioUrl: response.audioUrl,
-          duration: response.duration,
-          transcript: text,
-          language: session.language,
-        });
-
-        await prisma.transcript.create({
-          data: {
-            consultationId,
-            speaker: 'ai',
-            text,
-            language: session.language,
-          },
-        });
-
-        console.log(`[SOCKET] Avatar speaking: ${consultationId}`);
-      } catch (error) {
-        console.error('[SOCKET] Avatar speak error:', error);
-        socket.emit('avatar:error', { message: 'Failed to generate speech' });
-      }
+    socket.on('avatar:speak', () => {
+      socket.emit('avatar:error', {
+        message: 'Avatar speech is unavailable until approved response text can be enforced.',
+      });
     });
 
     // ======================
@@ -378,6 +329,10 @@ export function initConsultationSocket(io: Server) {
     socket.on('dashboard:join', (payload) => {
       try {
         const { userId } = payload;
+        if (userId !== socket.data.userId) {
+          socket.emit('dashboard:error', { message: 'Unauthorized' });
+          return;
+        }
         const dashboardRoom = `dashboard:${userId}`;
         socket.join(dashboardRoom);
         socket.emit('dashboard:joined', { room: dashboardRoom });
@@ -598,7 +553,35 @@ async function processAudioBuffer(
 
     session.audioProcessor.clearBuffer();
   } catch (error) {
-    console.error('[AUDIO_PROCESS] Error:', error);
+    console.error('[AUDIO_PROCESS] Processing failed', { errorName: safeErrorName(error) });
+    if (error instanceof InvalidAIResponseError && error.shouldEscalate) {
+      const message = 'Emergency escalation detected';
+      socketService.emit(consultationId, 'emergency_detected', { type: 'safety', message });
+      io.to(consultationId).emit('consultation:emergency-alert', { message });
+      void emergencyService
+        .createEmergencyAlert(consultationId, 'safety', message)
+        .then(async () => {
+          await dashboardEvents.recordStatus(
+            consultationId,
+            session.userId,
+            'Emergency escalation detected',
+          );
+          await redisPublisher.publish(
+            'sehat:consultation:events',
+            JSON.stringify({
+              consultationId,
+              event: 'emergency_detected',
+              message,
+              timestamp: new Date().toISOString(),
+            }),
+          );
+        })
+        .catch((emergencyError) => {
+          console.error('[AUDIO_PROCESS] Emergency persistence failed', {
+            errorName: safeErrorName(emergencyError),
+          });
+        });
+    }
     socketService.emit(consultationId, 'ai:error', { message: 'Failed to process audio' });
     io.to(consultationId).emit('ai:error', { message: 'Failed to process audio' });
   } finally {
@@ -607,3 +590,20 @@ async function processAudioBuffer(
 }
 
 export { activeSessions };
+
+function getOwnedActiveSession(socket: Socket, consultationId: unknown): ConsultationSession | undefined {
+  if (typeof consultationId !== 'string') return undefined;
+  const session = activeSessions.get(consultationId);
+  return session?.userId === socket.data.userId ? session : undefined;
+}
+
+async function socketOwnsConsultation(socket: Socket, consultationId: unknown): Promise<boolean> {
+  if (typeof consultationId !== 'string' || !consultationId) return false;
+  const userId = socket.data.userId;
+  if (typeof userId !== 'string' || !userId) return false;
+  const consultation = await prisma.consultation.findUnique({
+    where: { id: consultationId },
+    select: { userId: true },
+  });
+  return consultation?.userId === userId;
+}

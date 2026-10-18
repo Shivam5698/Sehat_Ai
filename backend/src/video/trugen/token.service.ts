@@ -8,14 +8,16 @@ export class TruGenTokenService {
   }
 
   generateSessionToken(sessionId: string, expiresIn: string = '1h'): string {
-    return jwt.sign({ sessionId }, this.apiSecret || 'trugen-secret', {
+    if (!this.apiSecret) throw new Error('TRUGEN_API_SECRET must be configured');
+    return jwt.sign({ sessionId }, this.apiSecret, {
       expiresIn,
     });
   }
 
   verifySessionToken(token: string): string | null {
+    if (!this.apiSecret) return null;
     try {
-      const decoded = jwt.verify(token, this.apiSecret || 'trugen-secret') as { sessionId: string };
+      const decoded = jwt.verify(token, this.apiSecret) as { sessionId: string };
       return decoded.sessionId;
     } catch (error) {
       return null;

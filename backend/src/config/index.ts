@@ -16,10 +16,16 @@ if (envPath) {
   console.warn('No .env file found in expected locations:', envCandidates);
 }
 
+function requireSecret(name: string): string {
+  const value = process.env[name];
+  if (!value) throw new Error(`${name} must be configured`);
+  return value;
+}
+
 export const config = {
   port: Number(process.env.PORT || 5000),
-  jwtSecret: process.env.JWT_SECRET || 'secret',
-  jwtRefreshSecret: process.env.JWT_REFRESH_SECRET || 'refresh_secret',
+  jwtSecret: requireSecret('JWT_SECRET'),
+  jwtRefreshSecret: requireSecret('JWT_REFRESH_SECRET'),
   databaseUrl: process.env.DATABASE_URL || '',
   redisUrl: process.env.REDIS_URL || 'redis://localhost:6379',
   openaiKey: process.env.OPENAI_API_KEY || '',
