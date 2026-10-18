@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { Button } from "@/components/ui/button";
@@ -11,48 +11,40 @@ export function AuthenticatedRoute({ children }: { children: ReactNode }) {
     "loading",
   );
   const [attempt, setAttempt] = useState(0);
-  const redirecting = useRef(false);
 
   useEffect(() => {
     let active = true;
+    let requestPending = false;
 
     async function checkSession() {
+      if (requestPending) return;
+      if (!authStorage.getUser()) {
+        setStatus("unauthenticated");
+        return;
+      }
+      requestPending = true;
+      setStatus("loading");
       try {
         const session = await authAPI.currentSession();
         if (!active) return;
-        const storedUser = authStorage.getUser();
-        if (
-          storedUser?.id !== session.user.id ||
-          storedUser.email !== session.user.email ||
-          storedUser.name !== session.user.name
-        ) {
-          authStorage.setSession(session);
-        }
+        authStorage.setSession(session);
         setStatus("authenticated");
       } catch (error) {
-        if (!active) return;
-        if (error instanceof ApiError && error.status === 401) {
-          setStatus("unauthenticated");
-          if (!redirecting.current) {
-            redirecting.current = true;
-            void navigate({ to: "/login" });
-          }
-          return;
-        }
-        setStatus("error");
+        if (active) setStatus(error instanceof ApiError && error.status === 401
+          ? "unauthenticated"
+          : "error");
+      } finally {
+        requestPending = false;
       }
     }
 
     const unsubscribe = authStorage.subscribe((authenticated) => {
       if (authenticated === true && authStorage.getUser()) {
-        redirecting.current = false;
         setStatus("authenticated");
       } else if (authenticated === false) {
         setStatus("unauthenticated");
-        if (!redirecting.current) {
-          redirecting.current = true;
-          void navigate({ to: "/login" });
-        }
+      } else {
+        void checkSession();
       }
     });
     void checkSession();
@@ -60,7 +52,13 @@ export function AuthenticatedRoute({ children }: { children: ReactNode }) {
       active = false;
       unsubscribe();
     };
-  }, [attempt, navigate]);
+  }, [attempt]);
+
+  useEffect(() => {
+    if (status === "unauthenticated") {
+      void navigate({ to: "/login", replace: true });
+    }
+  }, [navigate, status]);
 
   if (status === "loading" || status === "unauthenticated") {
     return (

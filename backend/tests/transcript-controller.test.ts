@@ -142,6 +142,16 @@ test("controller rejects requests without an authenticated subject", async () =>
   assert.deepEqual(calls, []);
 });
 
+test("controller rejects non-owner consultation access without persistence or orchestration", async () => {
+  const { dependencies, calls } = controllerOptions({
+    findConsultation: async () => ({ userId: "another-user", language: "en" }),
+  });
+  const state = await invoke(createTranscriptController(dependencies), undefined, "caller-1");
+
+  assert.equal(state.statusCode, 403);
+  assert.deepEqual(calls, []);
+});
+
 test("guest transcript access is limited to the matching consultation session", async () => {
   const guestSessionId = "guest-session-secret";
   const { dependencies, calls } = controllerOptions({
@@ -158,16 +168,6 @@ test("guest transcript access is limited to the matching consultation session", 
   assert.equal(owner.statusCode, 200);
   assert.equal(otherGuest.statusCode, 403);
   assert.deepEqual(calls, ["persist", "orchestrate"]);
-});
-
-test("controller rejects non-owner consultation access without persistence or orchestration", async () => {
-  const { dependencies, calls } = controllerOptions({
-    findConsultation: async () => ({ userId: "another-user", language: "en" }),
-  });
-  const state = await invoke(createTranscriptController(dependencies), undefined, "caller-1");
-
-  assert.equal(state.statusCode, 403);
-  assert.deepEqual(calls, []);
 });
 
 test("alternate authenticated transcript controller verifies ownership and does not change persistence behavior", async () => {

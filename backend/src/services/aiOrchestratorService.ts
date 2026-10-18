@@ -109,9 +109,18 @@ export class AIOrchestratorService {
         consultation: JSON.stringify(consultation),
       });
 
-      return response.data.report || '';
+      const payload: unknown = response.data;
+      if (
+        !isRecord(payload) ||
+        payload.ok !== true ||
+        typeof payload.report !== 'string' ||
+        !payload.report.trim()
+      ) {
+        throw new Error('AI service returned an invalid report response');
+      }
+      return payload.report;
     } catch (error) {
-      console.error('Report Generation Error:', error);
+      console.error('Report Generation Error', { errorName: safeErrorName(error) });
       throw error;
     }
   }
@@ -148,4 +157,8 @@ export function buildProcessRequest(context: ConversationContext): ProcessReques
       })),
     },
   };
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }

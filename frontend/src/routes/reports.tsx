@@ -57,8 +57,13 @@ function ReportsContent() {
 
   useEffect(() => {
     let active = true;
+    setLoading(true);
+    setError("");
 
-    Promise.all([apiClient.get<ReportsResponse>("/api/reports/list"), consultationAPI.list()])
+    Promise.all([
+      apiClient.get<ReportsResponse>("/api/reports/list"),
+      consultationAPI.list(),
+    ])
       .then(([response, consultationResponse]) => {
         if (!response.ok || !Array.isArray(response.reports)) {
           throw new Error("Invalid reports response");
@@ -66,10 +71,12 @@ function ReportsContent() {
         if (!consultationResponse.ok || !Array.isArray(consultationResponse.sessions)) {
           throw new Error("Invalid consultation list response");
         }
+        if (active) setReports(response.reports);
         if (active) {
-          setReports(response.reports);
           setConsultations(consultationResponse.sessions);
-          setConsultationId((current) => current || consultationResponse.sessions[0]?.id || "");
+          setConsultationId(
+            (current) => current || consultationResponse.sessions[0]?.id || "",
+          );
         }
       })
       .catch((requestError: unknown) => {

@@ -44,6 +44,12 @@ export function Navbar() {
     let active = true;
     let validationAttempt = 0;
     const syncStoredSession = async () => {
+      if (!authStorage.getUser()) {
+        setUser(null);
+        setAuthStatus("unauthenticated");
+        setAuthError("");
+        return;
+      }
       const currentAttempt = ++validationAttempt;
       setAuthStatus("loading");
       try {
@@ -70,17 +76,22 @@ export function Navbar() {
         setUser(storedUser);
         setAuthStatus("authenticated");
         setAuthError("");
-        void syncStoredSession();
       } else if (authenticated === false) {
         validationAttempt += 1;
         setUser(null);
         setAuthStatus("unauthenticated");
         setAuthError("");
-      } else {
+      } else if (storedUser) {
         void syncStoredSession();
+      } else {
+        validationAttempt += 1;
+        setUser(null);
+        setAuthStatus("unauthenticated");
+        setAuthError("");
       }
     });
-    void syncStoredSession();
+    if (authStorage.getUser()) void syncStoredSession();
+    else setAuthStatus("unauthenticated");
     return () => {
       active = false;
       validationAttempt += 1;

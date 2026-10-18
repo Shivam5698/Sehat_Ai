@@ -1,4 +1,4 @@
-﻿// API Client Configuration
+// API Client Configuration
 import {
   ApiError,
   parseTranscriptResponse,
@@ -33,6 +33,12 @@ export type ConsultationSummary = {
 };
 
 type ConsultationListResponse = { ok: true; sessions: ConsultationSummary[] };
+
+export type GeneratedReport = {
+  id: string;
+  content: string;
+  createdAt: string;
+};
 
 type ConsultationStartResponse = {
   session: { id: string };
@@ -111,11 +117,7 @@ export const authStorage = {
     const onAuthChange = (event: Event) => {
       listener((event as CustomEvent<boolean>).detail);
     };
-    const onStorage = (event: StorageEvent) => {
-      if (event.key !== null && event.key !== "user") return;
-      invalidateCurrentSessionRequest();
-      listener(null);
-    };
+    const onStorage = () => listener(null);
     window.addEventListener(AUTH_CHANGE_EVENT, onAuthChange);
     window.addEventListener("storage", onStorage);
     return () => {
@@ -157,15 +159,13 @@ export const apiClient = {
 
     if (!response.ok) {
       const error = new ApiError(response.status, payload);
-      if (
-        response.status === 401 &&
-        retryAfterRefresh &&
-        shouldRefresh(endpoint) &&
-        (endpoint !== "/api/auth/session" || authStorage.getUser() !== null)
-      ) {
+      if (response.status === 401 && retryAfterRefresh && shouldRefresh(endpoint)) {
         const refreshed = await refreshAccessToken(sessionGeneration);
         if (refreshed) return this.request<T>(endpoint, options, false);
-        if (sessionGeneration !== currentSessionRequestGeneration) {
+        if (
+          sessionGeneration !== currentSessionRequestGeneration &&
+          authStorage.getUser() !== null
+        ) {
           return this.request<T>(endpoint, options, false);
         }
         authStorage.clearSession();
@@ -243,7 +243,6 @@ export const authAPI = {
   currentSession() {
     if (!currentSessionRequest) {
       const generation = currentSessionRequestGeneration;
-      let retainUnauthorizedResponse = false;
       const request = apiClient
         .request<unknown>("/api/auth/session", {
           method: "GET",
@@ -269,13 +268,8 @@ export const authAPI = {
           }
           return payload as CurrentSessionResponse;
         })
-        .catch((error: unknown) => {
-          retainUnauthorizedResponse = error instanceof ApiError && error.status === 401;
-          throw error;
-        })
         .finally(() => {
           if (
-            !retainUnauthorizedResponse &&
             generation === currentSessionRequestGeneration &&
             currentSessionRequest === request
           ) {
@@ -290,6 +284,7 @@ export const authAPI = {
     return apiClient.post<{ ok: true }>("/api/auth/logout", {});
   },
   async hasValidSession(): Promise<boolean> {
+    if (!authStorage.getUser()) return false;
     const sessionGeneration = currentSessionRequestGeneration;
     try {
       await this.currentSession();
@@ -321,12 +316,6 @@ export const consultationAPI = {
   get(id: string) {
     return apiClient.get(`/api/consultation/${id}`);
   },
-};
-
-export type GeneratedReport = {
-  id: string;
-  content: string;
-  createdAt: string;
 };
 
 export const reportAPI = {
