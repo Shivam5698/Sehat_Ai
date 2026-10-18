@@ -46,7 +46,7 @@ function ConsultPage() {
   const activityItems = activitiesList.length && typeof activitiesList[0] === 'string' && !activitiesList[0].startsWith('activities') ? activitiesList : activities;
   return (
     <div>
-      <section className="bg-gradient-mint py-14">
+      <section className="bg-gradient-mint py-12 md:py-14">
         <div className="container mx-auto px-4">
           <SectionHeading
             eyebrow="Smart Healthcare Coordination"
@@ -56,13 +56,16 @@ function ConsultPage() {
         </div>
       </section>
 
-      <section className="py-14 bg-background">
+      <section className="py-10 md:py-14 bg-background">
         <div className="container mx-auto px-4 grid gap-8 lg:grid-cols-3">
+          <div className="lg:col-span-3 rounded-2xl border border-primary/20 bg-mint px-4 py-3 text-sm text-foreground">
+            <strong>How it works:</strong> review nearby care options, choose a doctor, then confirm an appointment. Availability and pricing should be verified before you travel.
+          </div>
           {/* Hospitals */}
           <div className="lg:col-span-2 space-y-5">
             <h3 className="font-display text-xl font-bold flex items-center gap-2"><Hospital className="h-5 w-5 text-primary" /> {t("nearestHospitals")}</h3>
             {hospitals.map((h) => (
-              <motion.div key={h.name} whileHover={{ y: -3 }} className="rounded-3xl bg-card border border-border p-5 shadow-soft flex gap-5 items-center">
+              <motion.div key={h.name} whileHover={{ y: -3 }} className="rounded-3xl bg-card border border-border p-4 sm:p-5 shadow-soft flex gap-4 sm:gap-5 items-center">
                 <img src={hospital} alt={h.name} loading="lazy" width={120} height={120} className="rounded-2xl w-28 h-28 object-cover hidden sm:block" />
                 <div className="flex-1">
                   <div className="flex items-start justify-between gap-3">
@@ -108,7 +111,7 @@ function ConsultPage() {
 
           {/* AI activity sidebar */}
           <aside className="space-y-5">
-            <div className="rounded-3xl bg-gradient-primary text-primary-foreground p-5 shadow-medical">
+            <div className="rounded-3xl bg-gradient-primary text-primary-foreground p-5 shadow-medical" aria-live="polite">
               <div className="flex items-center gap-2 text-xs uppercase tracking-wider font-semibold">
                 <Sparkles className="h-4 w-4" /> {t('aiActivityTitle')}
               </div>
@@ -128,14 +131,15 @@ function ConsultPage() {
             </div>
 
             <div className="rounded-3xl bg-card border border-border p-5 shadow-soft">
-              <div className="text-xs uppercase tracking-wider font-semibold text-primary mb-3">Booking Confirmation</div>
+              <div className="text-xs uppercase tracking-wider font-semibold text-primary mb-1">{t('bookingConfirmation')}</div>
+              <p className="text-xs text-muted-foreground mb-3">Review the details before confirming.</p>
               <div className="space-y-2 text-sm">
                 <div className="flex items-center gap-2"><CheckCircle2 className="h-4 w-4 text-success" /> Hospital: City Care</div>
                 <div className="flex items-center gap-2"><CheckCircle2 className="h-4 w-4 text-success" /> Doctor: Dr. Maria Khan</div>
                 <div className="flex items-center gap-2"><CheckCircle2 className="h-4 w-4 text-success" /> Today · 3:30 PM</div>
                 <div className="flex items-center gap-2"><CheckCircle2 className="h-4 w-4 text-success" /> Est. wait 12 min</div>
               </div>
-              <Button className="w-full mt-4 rounded-full bg-gradient-primary text-primary-foreground">Confirm</Button>
+              <Button className="w-full mt-4 rounded-full bg-gradient-primary text-primary-foreground">{t('confirm')}</Button>
             </div>
           </aside>
         </div>

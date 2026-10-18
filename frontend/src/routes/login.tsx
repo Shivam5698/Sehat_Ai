@@ -55,14 +55,14 @@ function LoginPage() {
 
   return (
     <div className="min-h-[calc(100vh-4rem)] grid lg:grid-cols-2">
-      <div className="flex items-center justify-center p-8 bg-background">
-        <form className="w-full max-w-md space-y-5" onSubmit={onSubmit}>
+      <div className="flex items-center justify-center p-5 sm:p-8 bg-background">
+        <form className="w-full max-w-md space-y-5" onSubmit={onSubmit} aria-labelledby="login-title">
           <Link to="/" className="flex items-center gap-2">
             <span className="grid place-items-center h-9 w-9 rounded-xl bg-gradient-primary text-primary-foreground"><Stethoscope className="h-5 w-5" /></span>
             <span className="font-display font-bold text-lg">Sehat<span className="text-primary">Agent</span></span>
           </Link>
           <div>
-            <h1 className="font-display text-3xl font-bold">{t('auth.welcomeBack')}</h1>
+            <h1 id="login-title" className="font-display text-3xl font-bold">{t('auth.welcomeBack')}</h1>
             <p className="text-sm text-muted-foreground mt-1">{t('auth.signInDesc')}</p>
           </div>
           <div className="space-y-3">
@@ -75,8 +75,8 @@ function LoginPage() {
               <Input id="password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder={t('form.passwordPlaceholder')} className="mt-1.5 rounded-xl" required />
             </div>
           </div>
-          {error ? <p className="text-sm text-destructive">{error}</p> : null}
-          <Button type="submit" disabled={submitting} className="w-full rounded-full bg-gradient-primary text-primary-foreground shadow-medical h-11">{submitting ? t('buttons.loading') || 'Signing in...' : t('buttons.signIn')}</Button>
+          {error ? <p role="alert" className="rounded-xl border border-destructive/40 bg-destructive/5 px-3 py-2 text-sm text-destructive">{error}</p> : null}
+          <Button type="submit" disabled={submitting} aria-busy={submitting} className="w-full rounded-full bg-gradient-primary text-primary-foreground shadow-medical h-11">{submitting ? t('buttons.loading') || 'Signing in...' : t('buttons.signIn')}</Button>
           <p className="text-sm text-muted-foreground text-center">
             {t('auth.newHere')} <Link to="/signup" className="text-primary font-semibold">{t('auth.createAccount')}</Link>
           </p>

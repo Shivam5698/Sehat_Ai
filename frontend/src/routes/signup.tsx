@@ -66,14 +66,14 @@ function SignupPage() {
         <img src={team} alt="Healthcare team" loading="lazy" width={1280} height={800} className="absolute inset-0 w-full h-full object-cover" />
         <div className="absolute inset-0 bg-gradient-to-bl from-primary/40 to-transparent" />
       </div>
-      <div className="flex items-center justify-center p-8 bg-background">
-        <form className="w-full max-w-md space-y-5" onSubmit={onSubmit}>
+      <div className="flex items-center justify-center p-5 sm:p-8 bg-background">
+        <form className="w-full max-w-md space-y-5" onSubmit={onSubmit} aria-labelledby="signup-title">
           <Link to="/" className="flex items-center gap-2">
             <span className="grid place-items-center h-9 w-9 rounded-xl bg-gradient-primary text-primary-foreground"><Stethoscope className="h-5 w-5" /></span>
             <span className="font-display font-bold text-lg">Sehat<span className="text-primary">Agent</span></span>
           </Link>
           <div>
-            <h1 className="font-display text-3xl font-bold">{t('auth.createAccountTitle')}</h1>
+            <h1 id="signup-title" className="font-display text-3xl font-bold">{t('auth.createAccountTitle')}</h1>
             <p className="text-sm text-muted-foreground mt-1">{t('auth.createAccountDesc')}</p>
           </div>
           <div className="space-y-3">
@@ -96,8 +96,9 @@ function SignupPage() {
               <Input id="password" type="password" value={form.password} onChange={(e) => updateField('password', e.target.value)} placeholder={t('form.passwordPlaceholder')} className="mt-1.5 rounded-xl" required />
             </div>
           </div>
-          {error ? <p className="text-sm text-destructive">{error}</p> : null}
-          <Button type="submit" disabled={submitting} className="w-full rounded-full bg-gradient-primary text-primary-foreground shadow-medical h-11">{submitting ? 'Creating account...' : t('buttons.createAccount')}</Button>
+          <p className="text-xs text-muted-foreground">Use at least 8 characters for your password.</p>
+          {error ? <p role="alert" className="rounded-xl border border-destructive/40 bg-destructive/5 px-3 py-2 text-sm text-destructive">{error}</p> : null}
+          <Button type="submit" disabled={submitting} aria-busy={submitting} className="w-full rounded-full bg-gradient-primary text-primary-foreground shadow-medical h-11">{submitting ? 'Creating account...' : t('buttons.createAccount')}</Button>
           <p className="text-sm text-muted-foreground text-center">
             {t('auth.alreadyHaveAccount')} <Link to="/login" className="text-primary font-semibold">{t('auth.signIn')}</Link>
           </p>

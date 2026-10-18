@@ -481,14 +481,14 @@ function AiDoctorPage() {
       </section>
       <div className="bg-section min-h-[calc(100vh-4rem)]">
         <div className="container mx-auto px-4 py-8 grid gap-6 lg:grid-cols-3">
-          <div className="lg:col-span-2 rounded-3xl bg-card border border-border shadow-soft overflow-hidden flex flex-col">
+          <div className="lg:col-span-2 rounded-3xl bg-card border border-border shadow-soft overflow-hidden flex flex-col" aria-labelledby="consultation-workspace-title">
             <div className="px-5 py-3 flex flex-col gap-3 border-b border-border bg-mint">
               <div className="flex items-center justify-between gap-3">
                 <div className="flex items-center gap-2">
                   <span
                     className={`h-2 w-2 rounded-full ${callState === "connected" ? "bg-primary animate-pulse" : "bg-muted-foreground"}`}
                   />
-                  <span className="text-xs font-semibold uppercase tracking-wider text-primary">
+                  <span id="consultation-workspace-title" className="text-xs font-semibold uppercase tracking-wider text-primary">
                     {callState === "connecting"
                       ? "Connecting"
                       : callState === "connected"
@@ -656,7 +656,7 @@ function AiDoctorPage() {
               <div className="text-xs font-semibold uppercase tracking-wider text-primary mb-3 flex items-center gap-2">
                 <Sparkles className="h-3.5 w-3.5" /> {t("ai.liveTranscript")}
               </div>
-              <div className="space-y-3 max-h-48 overflow-y-auto">
+              <div className="space-y-3 max-h-48 overflow-y-auto" aria-live="polite" aria-label="Consultation transcript">
                 {messages.length ? (
                   messages.map((message, index) => (
                     <Bubble

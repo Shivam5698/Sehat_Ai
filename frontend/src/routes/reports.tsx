@@ -35,7 +35,10 @@ function ReportsPage() {
             </Button>
           </div>
 
-          <div className="p-8 space-y-8">
+          <div className="p-5 sm:p-8 space-y-8">
+            <div className="rounded-2xl border border-warning/40 bg-warning/10 px-4 py-3 text-sm">
+              <strong>For review:</strong> This AI-generated report is a summary to discuss with a qualified clinician. It is not a diagnosis or prescription.
+            </div>
             <Grid2>
               <Field label={t('fields.patientName')} value={t('patientNameValue', 'Anonymous User')} />
               <Field label={t('fields.ageSex')} value={t('ageSexValue', '29 / Male')} />

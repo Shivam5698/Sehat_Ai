@@ -118,7 +118,7 @@ function RootComponent() {
       <I18nextProvider i18n={i18n}>
         <div className="flex min-h-screen flex-col">
           <Navbar />
-          <main className="flex-1">
+          <main id="main-content" className="flex-1" tabIndex={-1}>
             <Outlet />
           </main>
           <Footer />

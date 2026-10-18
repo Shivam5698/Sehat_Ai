@@ -2,7 +2,7 @@ import { Link } from "@tanstack/react-router";
 import { Stethoscope, Menu, Globe } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -58,8 +58,8 @@ export function Navbar() {
         <div className="hidden md:flex items-center gap-2">
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="sm" className="rounded-full gap-1.5">
-                <Globe className="h-4 w-4" />
+              <Button variant="ghost" size="sm" className="rounded-full gap-1.5" aria-label={`Change language, currently ${langLabel[lang] ?? "EN"}`}>
+                <Globe className="h-4 w-4" aria-hidden="true" />
                 {langLabel[lang]}
               </Button>
             </DropdownMenuTrigger>
@@ -85,8 +85,14 @@ export function Navbar() {
               <Menu className="h-5 w-5" />
             </Button>
           </SheetTrigger>
-          <SheetContent>
-            <div className="flex flex-col gap-2 mt-8">
+          <SheetContent aria-describedby="mobile-navigation-description">
+            <SheetHeader className="mt-6 text-left">
+              <SheetTitle>Sehat<span className="text-primary">Agent</span></SheetTitle>
+              <SheetDescription id="mobile-navigation-description">
+                Move between healthcare tools and your account.
+              </SheetDescription>
+            </SheetHeader>
+            <div className="flex flex-col gap-2 mt-6">
               {links.map((l) => (
                 <Link
                   key={l.to}
@@ -98,6 +104,22 @@ export function Navbar() {
                 </Link>
               ))}
               <div className="border-t border-border my-3" />
+              <div className="flex items-center justify-between px-3 py-2">
+                <span className="text-sm font-medium">Language</span>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="outline" size="sm" className="rounded-full gap-1.5">
+                      <Globe className="h-4 w-4" aria-hidden="true" />
+                      {langLabel[lang] ?? "EN"}
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    <DropdownMenuItem onClick={() => i18n.changeLanguage('en')}>English</DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => i18n.changeLanguage('hi')}>हिन्दी</DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => i18n.changeLanguage('ur')}>اردو</DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </div>
               <Link to="/login" onClick={() => setMobileMenuOpen(false)}>
                 <Button variant="outline" className="w-full rounded-full">{t('nav.login')}</Button>
               </Link>
