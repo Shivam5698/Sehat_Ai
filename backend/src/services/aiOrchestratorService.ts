@@ -1,14 +1,29 @@
-import axios from 'axios';
-import { ConversationContext, Symptom, RiskAssessment } from '../types/consultation.js';
+import axios, { AxiosError } from 'axios';
+import { ConversationContext, RiskAssessment, Symptom } from '../types/consultation.js';
 import { prisma } from '../database/client.js';
-import { orchestrateAgents } from './agentOrchestrator.js';
-import type { SeverityRiskLevel } from './agents/severityAdapter.js';
+import { AIServiceUnavailableError, validateAndMapWorkflowResult } from './aiResponseBoundary.js';
 
 export interface AgentResponse {
   agent: string;
   confidence: number;
   data: any;
   timestamp: Date;
+}
+
+export interface ProcessHistoryEntry {
+  speaker: 'patient' | 'ai' | 'system';
+  text: string;
+  timestamp?: string;
+}
+
+export interface ProcessRequest {
+  sessionId: string;
+  conversationId: string;
+  language: string;
+  input: string;
+  metadata: {
+    conversationHistory: ProcessHistoryEntry[];
+  };
 }
 
 export interface OrchestrationResult {
@@ -21,69 +36,56 @@ export interface OrchestrationResult {
   emergencyMessage?: string;
 }
 
+export function buildProcessRequest(context: ConversationContext): ProcessRequest {
+  const patientTurn = [...context.history].reverse().find((entry) => entry.speaker === 'patient');
+  const conversationHistory = context.history.map((entry) => ({
+    speaker: entry.speaker,
+    text: entry.text,
+    ...(entry.timestamp ? { timestamp: new Date(entry.timestamp).toISOString() } : {}),
+  }));
+
+  return {
+    sessionId: context.consultationId,
+    conversationId: context.consultationId,
+    language: context.language,
+    input: patientTurn ? `patient: ${patientTurn.text}` : '',
+    metadata: {
+      conversationHistory,
+    },
+  };
+}
+
+type ProcessRequestTransport = (
+  url: string,
+  payload: ProcessRequest,
+  options: { timeout: number },
+) => Promise<unknown>;
+
 export class AIOrchestratorService {
   private aiServiceUrl: string;
+  private readonly requestTransport: ProcessRequestTransport;
 
-  constructor(aiServiceUrl: string = 'http://localhost:8000') {
+  constructor(aiServiceUrl: string = 'http://localhost:8000', requestTransport?: ProcessRequestTransport) {
     this.aiServiceUrl = aiServiceUrl.replace(/\/$/, '');
+    this.requestTransport =
+      requestTransport ??
+      ((url, payload, options) =>
+        axios.post(url, payload, {
+          timeout: options.timeout,
+        }));
   }
 
   async orchestrateConsultation(context: ConversationContext): Promise<OrchestrationResult> {
-    const patientTurn = [...context.history]
-      .reverse()
-      .find((entry) => entry.speaker === 'patient');
-    if (!patientTurn) {
-      throw new Error('No patient message is available for orchestration');
-    }
-    const result = await orchestrateAgents({
-      sessionId: context.consultationId,
-      message: patientTurn.text,
-      language: context.language,
-      history: context.history
-        .filter((entry) => entry !== patientTurn)
-        .slice(-6)
-        .map((entry) => ({ speaker: entry.speaker, text: entry.text })),
-    });
-    const symptoms: Symptom[] =
-      result.symptom?.data.summary.primarySymptoms.map((name) => ({
-        id: '',
-        name,
-        duration: result.symptom?.data.summary.duration,
-        severity: result.symptom?.data.summary.severityHint,
-      })) ?? [];
+    const payload = buildProcessRequest(context);
+    const url = `${this.aiServiceUrl}/process`;
 
-    return {
-      symptoms,
-      ...(result.severity
-        ? {
-            riskAssessment: {
-              riskScore: result.severity.riskScore,
-              level: this.toRiskLevel(result.severity.riskLevel),
-              confidence: result.severity.confidence,
-              details: result.severity.clinicalSummary,
-            },
-          }
-        : {}),
-      safetyIssues: result.safety?.safetyWarnings ?? [],
-      recommendations: result.safety?.approvedRecommendations ?? [],
-      nextAction: result.emergency
-        ? 'seek-emergency-care'
-        : 'continue',
-      shouldEscalate: result.emergency || result.safety?.escalationRequired === true,
-      emergencyMessage: result.emergencyMessage,
-    };
-  }
-
-  private toRiskLevel(level: SeverityRiskLevel): RiskAssessment['level'] {
-    switch (level) {
-      case 'LOW':
-        return 'low';
-      case 'MODERATE':
-        return 'medium';
-      case 'HIGH':
-        return 'high';
-      case 'EMERGENCY':
-        return 'critical';
+    try {
+      const rawResult = await this.requestTransport(url, payload, { timeout: 15000 });
+      return validateAndMapWorkflowResult(rawResult);
+    } catch (error) {
+      if (error instanceof AIServiceUnavailableError) throw error;
+      if (isUpstreamUnavailable(error)) throw new AIServiceUnavailableError();
+      throw error;
     }
   }
 
@@ -126,4 +128,29 @@ export class AIOrchestratorService {
       return text;
     }
   }
+}
+
+function isUpstreamUnavailable(error: unknown): boolean {
+  if (error instanceof AxiosError) {
+    const status = error.response?.status;
+    if (status === 503 || status === 504 || status === 429) return true;
+    if (error.code === 'ECONNABORTED' || error.code === 'ETIMEDOUT' || error.code === 'ECONNRESET') {
+      return true;
+    }
+    if (!error.response) return true;
+  }
+
+  if (typeof error === 'object' && error !== null && 'code' in error) {
+    const code = error.code;
+    if (code === 'ECONNABORTED' || code === 'ETIMEDOUT' || code === 'ECONNRESET') {
+      return true;
+    }
+  }
+
+  if (error instanceof Error) {
+    const message = error.message.toLowerCase();
+    return message.includes('timeout') || message.includes('timed out') || message.includes('network');
+  }
+
+  return false;
 }

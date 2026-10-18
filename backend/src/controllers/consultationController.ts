@@ -119,7 +119,12 @@ export async function getSessionMessages(req: AuthRequest, res: Response) {
       select: { id: true, speaker: true, text: true, createdAt: true },
       orderBy: { createdAt: 'asc' },
     });
-    const messages = transcripts.map((transcript) => ({
+    const messages = transcripts.map((transcript: {
+      id: string;
+      speaker: string;
+      text: string;
+      createdAt: Date;
+    }) => ({
       ...transcript,
       speaker: transcript.speaker as 'patient' | 'ai',
     }));

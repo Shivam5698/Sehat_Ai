@@ -1,10 +1,40 @@
 import { prisma } from '../database/client.js';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
+import { randomUUID } from 'node:crypto';
 import { config } from '../config/index.js';
 
 const ACCESS_EXPIRES = '15m';
 const REFRESH_EXPIRES = '7d';
+
+export function createAuthSession(user: {
+  id: string;
+  email: string;
+  name?: string | null;
+  role?: string;
+}) {
+  const sessionId = randomUUID();
+  const accessToken = jwt.sign({
+    sub: user.id,
+    role: user.role ?? 'patient',
+    sid: sessionId,
+  }, config.jwtSecret, { expiresIn: ACCESS_EXPIRES });
+  const refreshToken = jwt.sign({
+    sub: user.id,
+    sid: sessionId,
+  }, config.jwtRefreshSecret, { expiresIn: REFRESH_EXPIRES });
+
+  return {
+    sessionId,
+    accessToken,
+    refreshToken,
+    user: {
+      id: user.id,
+      email: user.email,
+      name: user.name,
+    },
+  };
+}
 
 export const AuthService = {
   async signup(data: { email: string; password: string; name?: string }) {
@@ -27,9 +57,12 @@ export const AuthService = {
     if (!user) throw new Error('Invalid credentials');
     const ok = await bcrypt.compare(password, user.password);
     if (!ok) throw new Error('Invalid credentials');
-    const access = jwt.sign({ sub: user.id, role: user.role }, config.jwtSecret, { expiresIn: ACCESS_EXPIRES });
-    const refresh = jwt.sign({ sub: user.id }, config.jwtRefreshSecret, { expiresIn: REFRESH_EXPIRES });
-    return { accessToken: access, refreshToken: refresh, user: { id: user.id, email: user.email, name: user.name } };
+    return createAuthSession({
+      id: user.id,
+      email: user.email,
+      name: user.name,
+      role: user.role,
+    });
   },
 
   async getCurrentUser(userId: string) {

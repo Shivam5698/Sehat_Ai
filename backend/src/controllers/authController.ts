@@ -1,4 +1,6 @@
 import { Request, Response } from 'express';
+import jwt from 'jsonwebtoken';
+import { config } from '../config/index.js';
 import { AuthService } from '../services/authService.js';
 import type { AuthRequest } from '../middleware/auth.js';
 
@@ -95,6 +97,45 @@ export async function me(req: AuthRequest, res: Response) {
     return res.json({ ok: true, user });
   } catch {
     return res.status(500).json({ ok: false, message: 'Unable to retrieve user' });
+  }
+}
+
+export async function session(req: AuthRequest, res: Response) {
+  const authHeader = typeof req.headers.authorization === 'string' ? req.headers.authorization : null;
+  const cookieHeader = typeof req.headers.cookie === 'string' ? req.headers.cookie : '';
+  const accessToken = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : null;
+  const cookieToken = /(?:^|;\s*)sehat_access=([^;]+)/.exec(cookieHeader)?.[1] ?? null;
+
+  if (!accessToken && !cookieToken) {
+    res.setHeader('Cache-Control', 'no-store');
+    return res.status(401).json({ ok: false, message: 'Missing token' });
+  }
+
+  const token = accessToken ?? cookieToken;
+  if (!token) {
+    res.setHeader('Cache-Control', 'no-store');
+    return res.status(401).json({ ok: false, message: 'Missing token' });
+  }
+
+  try {
+    const payload = jwt.verify(token, config.jwtSecret);
+    if (typeof payload === 'string' || typeof payload.sub !== 'string') {
+      res.setHeader('Cache-Control', 'no-store');
+      return res.status(401).json({ ok: false, message: 'Invalid token' });
+    }
+
+    req.user = payload;
+    const user = await AuthService.getCurrentUser(payload.sub);
+    if (!user) {
+      res.setHeader('Cache-Control', 'no-store');
+      return res.status(404).json({ ok: false, message: 'User not found' });
+    }
+
+    res.setHeader('Cache-Control', 'no-store');
+    return res.json({ ok: true, user });
+  } catch {
+    res.setHeader('Cache-Control', 'no-store');
+    return res.status(401).json({ ok: false, message: 'Invalid token' });
   }
 }
 

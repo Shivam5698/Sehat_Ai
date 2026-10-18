@@ -14,7 +14,7 @@ export class HospitalAgent {
       orderBy: [{ emergency: 'desc' }, { name: 'asc' }],
     });
 
-    return hospitals.map((hospital) => ({
+    return hospitals.map((hospital: { id: string; name: string; emergency: boolean }) => ({
       id: hospital.id,
       name: hospital.name,
       emergencyAvailable: hospital.emergency,

@@ -1,13 +1,13 @@
 import { Router } from 'express';
 import { requireAuth } from '../middleware/auth.js';
-import { createAvatarUnavailableHandler } from '../controllers/avatarFallbackController.js';
+import {
+  createTrugenSession,
+  streamAudio,
+  avatarSpeak,
+} from '../controllers/trugenController.js';
 
 export const trugenRouter = Router();
 
-const avatarUnavailable = createAvatarUnavailableHandler(
-  'Avatar integration is unavailable until an approved-response flow is verified.',
-);
-
-trugenRouter.post('/session', requireAuth, avatarUnavailable);
-trugenRouter.post('/stream', requireAuth, avatarUnavailable);
-trugenRouter.post('/speak', requireAuth, avatarUnavailable);
+trugenRouter.post('/session', requireAuth, createTrugenSession);
+trugenRouter.post('/stream', requireAuth, streamAudio);
+trugenRouter.post('/speak', requireAuth, avatarSpeak);

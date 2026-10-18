@@ -2,7 +2,7 @@ import type { RiskAssessment, Symptom } from "../types/consultation.js";
 
 export interface OrchestrationResult {
   symptoms: Symptom[];
-  riskAssessment: RiskAssessment;
+  riskAssessment?: RiskAssessment;
   safetyIssues?: string[];
   recommendations?: string[];
   nextAction?: string;

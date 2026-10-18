@@ -6,6 +6,7 @@ import {
   refreshToken,
   logout,
   me,
+  session,
 } from '../controllers/authController.js';
 import { requireAuth, type AuthRequest } from '../middleware/auth.js';
 
@@ -21,4 +22,5 @@ authRouter.post('/signup', signup);
 authRouter.post('/login', login);
 authRouter.post('/refresh', refreshToken);
 authRouter.post('/logout', logout);
+authRouter.get('/session', session);
 authRouter.get('/me', authenticate, me);

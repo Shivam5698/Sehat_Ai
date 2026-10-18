@@ -89,7 +89,7 @@ async function persistResult(
   const severity = result.severity;
   const emergencyMessage = result.emergencyMessage ?? result.reply;
 
-  await prisma.$transaction(async (transaction) => {
+  await prisma.$transaction(async (transaction: any) => {
     await transaction.transcript.createMany({
       data: [
         { consultationId, speaker: 'patient', text: message, language },
