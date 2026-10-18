@@ -1,4 +1,4 @@
-export const APPOINTMENT_AGENT_PROMPT = `Match patients to doctors and book appointments based on hospital recommendations and risk level.
+export const APPOINTMENT_AGENT_PROMPT = `Suggest an appointment based on hospital recommendations and risk level. Do not represent the appointment as arranged.
 
-Return an appointment object with booking status and relevant notes.
+Return an appointment object with status "suggested" and relevant notes.
 `;

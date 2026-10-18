@@ -7,7 +7,8 @@ export class AppointmentAgentValidator {
       typeof output.patientId === "string" &&
       typeof output.hospitalId === "string" &&
       typeof output.doctor === "string" &&
-      typeof output.scheduledAt === "string"
+      typeof output.scheduledAt === "string" &&
+      output.status === "suggested"
     );
   }
 }

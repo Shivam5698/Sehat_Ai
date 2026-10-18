@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { AppointmentAgent } from "../service";
 
 describe("AppointmentAgent", () => {
-  it("should book an appointment from hospital recommendations", async () => {
+  it("should suggest an appointment from hospital recommendations", async () => {
     const agent = new AppointmentAgent();
     const result = await agent.execute({
       patientId: "patient-123",
@@ -12,7 +12,7 @@ describe("AppointmentAgent", () => {
     });
 
     expect(result.appointmentId).toBeDefined();
-    expect(result.status).toBe("CONFIRMED");
+    expect(result.status).toBe("suggested");
     expect(result.hospitalId).toBe("hospital-1");
   });
 });

@@ -1,34 +1,8 @@
 import axios from 'axios';
-import { ConversationContext } from '../types/consultation.js';
+import { ConversationContext, Symptom, RiskAssessment } from '../types/consultation.js';
 import { prisma } from '../database/client.js';
-import {
-  AIServiceUnavailableError,
-  createSafeAgentLogPayload,
-  InvalidAIResponseError,
-  safeErrorName,
-  validateAndMapWorkflowResult,
-  type OrchestrationResult,
-} from './aiResponseBoundary.js';
-
-export type ProcessRequest = {
-  sessionId: string;
-  conversationId: string;
-  language: string;
-  input: string;
-  metadata: {
-    conversationHistory: Array<{
-      speaker: 'patient' | 'ai' | 'system';
-      text: string;
-      timestamp: Date;
-    }>;
-  };
-};
-
-type ProcessPost = (
-  url: string,
-  payload: ProcessRequest,
-  options: { timeout: number },
-) => Promise<{ data: unknown }>;
+import { orchestrateAgents } from './agentOrchestrator.js';
+import type { SeverityRiskLevel } from './agents/severityAdapter.js';
 
 export interface AgentResponse {
   agent: string;
@@ -37,56 +11,79 @@ export interface AgentResponse {
   timestamp: Date;
 }
 
-export type { OrchestrationResult } from './aiResponseBoundary.js';
+export interface OrchestrationResult {
+  symptoms: Symptom[];
+  riskAssessment?: RiskAssessment;
+  safetyIssues?: string[];
+  recommendations?: string[];
+  nextAction?: string;
+  shouldEscalate?: boolean;
+  emergencyMessage?: string;
+}
 
 export class AIOrchestratorService {
   private aiServiceUrl: string;
-  private agentResponses: Map<string, AgentResponse[]> = new Map();
-  private readonly post: ProcessPost;
 
-  constructor(aiServiceUrl: string = 'http://localhost:8000', post?: ProcessPost) {
+  constructor(aiServiceUrl: string = 'http://localhost:8000') {
     this.aiServiceUrl = aiServiceUrl.replace(/\/$/, '');
-    this.post = post ?? ((url, payload, options) => axios.post<unknown>(url, payload, options));
   }
 
   async orchestrateConsultation(context: ConversationContext): Promise<OrchestrationResult> {
-    try {
-      const requestPayload = buildProcessRequest(context);
-
-      const response = await this.post(`${this.aiServiceUrl}/process`, requestPayload, {
-        timeout: 15000,
-      });
-
-      const workflowResult = response.data;
-      await this.storeAgentLogs(context.consultationId, createSafeAgentLogPayload(workflowResult));
-      return validateAndMapWorkflowResult(workflowResult);
-    } catch (error) {
-      console.error('Orchestration request failed', {
-        errorName: safeErrorName(error),
-      });
-      if (axios.isAxiosError(error)) {
-        if (error.response?.status === undefined || error.response.status >= 500) {
-          throw new AIServiceUnavailableError();
-        }
-        throw new InvalidAIResponseError(false);
-      }
-      throw error;
+    const patientTurn = [...context.history]
+      .reverse()
+      .find((entry) => entry.speaker === 'patient');
+    if (!patientTurn) {
+      throw new Error('No patient message is available for orchestration');
     }
+    const result = await orchestrateAgents({
+      sessionId: context.consultationId,
+      message: patientTurn.text,
+      language: context.language,
+      history: context.history
+        .filter((entry) => entry !== patientTurn)
+        .slice(-6)
+        .map((entry) => ({ speaker: entry.speaker, text: entry.text })),
+    });
+    const symptoms: Symptom[] =
+      result.symptom?.data.summary.primarySymptoms.map((name) => ({
+        id: '',
+        name,
+        duration: result.symptom?.data.summary.duration,
+        severity: result.symptom?.data.summary.severityHint,
+      })) ?? [];
+
+    return {
+      symptoms,
+      ...(result.severity
+        ? {
+            riskAssessment: {
+              riskScore: result.severity.riskScore,
+              level: this.toRiskLevel(result.severity.riskLevel),
+              confidence: result.severity.confidence,
+              details: result.severity.clinicalSummary,
+            },
+          }
+        : {}),
+      safetyIssues: result.safety?.safetyWarnings ?? [],
+      recommendations: result.safety?.approvedRecommendations ?? [],
+      nextAction: result.emergency
+        ? 'seek-emergency-care'
+        : 'continue',
+      shouldEscalate: result.emergency || result.safety?.escalationRequired === true,
+      emergencyMessage: result.emergencyMessage,
+    };
   }
 
-  private async storeAgentLogs(consultationId: string, data: unknown): Promise<void> {
-    try {
-      await prisma.agentLog.create({
-        data: {
-          consultationId,
-          agentName: 'orchestrator',
-          payload: JSON.stringify(data),
-        },
-      });
-    } catch (error) {
-      console.error('Orchestration metadata persistence failed', {
-        errorName: safeErrorName(error),
-      });
+  private toRiskLevel(level: SeverityRiskLevel): RiskAssessment['level'] {
+    switch (level) {
+      case 'LOW':
+        return 'low';
+      case 'MODERATE':
+        return 'medium';
+      case 'HIGH':
+        return 'high';
+      case 'EMERGENCY':
+        return 'critical';
     }
   }
 
@@ -129,23 +126,4 @@ export class AIOrchestratorService {
       return text;
     }
   }
-}
-
-export function buildProcessRequest(context: ConversationContext): ProcessRequest {
-  return {
-    sessionId: context.consultationId,
-    conversationId: context.consultationId,
-    language: context.language,
-    input:
-      context.history.length > 0
-        ? context.history.map((entry) => `${entry.speaker}: ${entry.text}`).join('\n')
-        : context.consultationId,
-    metadata: {
-      conversationHistory: context.history.map((entry) => ({
-        speaker: entry.speaker,
-        text: entry.text,
-        timestamp: entry.timestamp,
-      })),
-    },
-  };
 }

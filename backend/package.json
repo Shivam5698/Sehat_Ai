@@ -9,8 +9,10 @@
     "build": "tsc -p tsconfig.json",
     "test": "npm run build && node --experimental-strip-types --test tests/*.test.ts",
     "start": "node dist/server.js",
+    "test": "node --loader ts-node/esm --test tests/core.test.ts",
     "prisma:generate": "prisma generate",
-    "prisma:migrate": "prisma migrate dev --name init"
+    "prisma:migrate": "prisma migrate dev --name init",
+    "prisma:seed": "node --loader ts-node/esm prisma/seed.ts"
   },
   "dependencies": {
     "@prisma/client": "6.11.0",

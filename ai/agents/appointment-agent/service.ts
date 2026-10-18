@@ -27,8 +27,8 @@ export class AppointmentAgent {
       doctor: `${specialty} Specialist`,
       specialty,
       scheduledAt: new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString(),
-      status: "CONFIRMED",
-      notes: `Appointment booked at ${hospitalName} for ${specialty}.`,
+      status: "suggested",
+      notes: `Suggested appointment at ${hospitalName} for ${specialty}; contact the hospital to arrange a visit.`,
     };
 
     if (!(await this.validate(output))) {

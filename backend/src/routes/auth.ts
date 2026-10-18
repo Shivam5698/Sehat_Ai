@@ -1,16 +1,24 @@
 import { Router } from 'express';
-import { signup, login, refreshToken, logout, currentSession } from '../controllers/authController.js';
-import { requireAuth } from '../middleware/auth.js';
+import type { NextFunction, Request, RequestHandler, Response } from 'express';
+import {
+  signup,
+  login,
+  refreshToken,
+  logout,
+  me,
+} from '../controllers/authController.js';
+import { requireAuth, type AuthRequest } from '../middleware/auth.js';
 
 export const authRouter = Router();
 
-authRouter.use((_req, res, next) => {
-  res.setHeader('Cache-Control', 'no-store');
-  next();
-});
+const authenticate: RequestHandler = (
+  request: Request,
+  response: Response,
+  next: NextFunction,
+) => requireAuth(request as AuthRequest, response, next);
 
 authRouter.post('/signup', signup);
 authRouter.post('/login', login);
 authRouter.post('/refresh', refreshToken);
-authRouter.get('/session', requireAuth, currentSession);
-authRouter.post('/logout', requireAuth, logout);
+authRouter.post('/logout', logout);
+authRouter.get('/me', authenticate, me);

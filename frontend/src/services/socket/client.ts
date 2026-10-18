@@ -10,7 +10,13 @@ export const socketService = {
       return socket;
     }
 
+    const token = window.localStorage.getItem("token");
+    if (!token) {
+      throw new Error("Cannot connect to the socket without an authentication token.");
+    }
+
     socket = io(SOCKET_URL, {
+      auth: { token },
       withCredentials: true,
       reconnection: true,
       reconnectionDelay: 1000,

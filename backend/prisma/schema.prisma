@@ -121,7 +121,7 @@ model Appointment {
   hospitalId     String?
   doctorId       String?
   scheduledFor   DateTime
-  status         String @default("booked")
+  status         String @default("suggested")
   createdAt      DateTime @default(now())
 }
 

@@ -1,7 +1,7 @@
 import app from './app';
 import { logEvent } from './logging';
 
-const PORT = process.env.PORT ? Number(process.env.PORT) : 4000;
+const PORT = process.env.PORT ? Number(process.env.PORT) : 5002;
 
 app.listen(PORT, () => {
   logEvent('Service Started', { port: PORT });
