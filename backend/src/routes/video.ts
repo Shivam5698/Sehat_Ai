@@ -8,14 +8,13 @@ import {
   endVideoSession,
   getVideoSessionStatus,
   listSessionParticipants,
-  avatarSpeak,
   listAvailableAvatars,
   pauseVideoSession,
   resumeVideoSession,
   sendVideoTranscript,
   avatarRespond,
 } from '../controllers/videoController.js';
-import { requireAuth } from '../middleware/auth.js';
+import { requireAuth, requireConsultationAccess } from '../middleware/auth.js';
 
 export const videoRouter = Router();
 
@@ -30,9 +29,8 @@ videoRouter.get('/session/:sessionId/status', requireAuth, getVideoSessionStatus
 videoRouter.get('/session/:sessionId/participants', requireAuth, listSessionParticipants);
 videoRouter.post('/session/pause', requireAuth, pauseVideoSession);
 videoRouter.post('/session/resume', requireAuth, resumeVideoSession);
-videoRouter.post('/transcript', requireAuth, sendVideoTranscript);
+videoRouter.post('/transcript', requireConsultationAccess(), sendVideoTranscript);
 
 // Avatar Control
-videoRouter.post('/avatar/speak', requireAuth, avatarSpeak);
 videoRouter.post('/avatar/respond', requireAuth, avatarRespond);
 videoRouter.get('/avatars', requireAuth, listAvailableAvatars);

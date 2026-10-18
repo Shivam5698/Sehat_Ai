@@ -1,5 +1,5 @@
-import React from 'react';
-import { Link, useNavigate } from '@tanstack/react-router';
+import React from "react";
+import { Link, useNavigate } from "@tanstack/react-router";
 
 type Props = { children?: React.ReactNode };
 
@@ -15,12 +15,16 @@ export class ErrorBoundaryClass extends React.Component<Props, State> {
     return { hasError: true, error };
   }
 
-  componentDidCatch(error: Error, info: any) {
+  componentDidCatch(error: Error, info: React.ErrorInfo) {
     // log to console and attempt to POST to /api/logs if available
-    console.error('Captured error:', error, info);
-    try {
-      fetch('/api/logs', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ error: String(error), info }) });
-    } catch (_) {}
+    console.error("Captured error:", error, info);
+    void fetch("/api/logs", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ error: String(error), info }),
+    }).catch(() => {
+      console.error("Failed to send client error report.");
+    });
   }
 
   reset = () => this.setState({ hasError: false, error: undefined });
@@ -32,7 +36,9 @@ export class ErrorBoundaryClass extends React.Component<Props, State> {
       <div className="flex min-h-screen items-center justify-center bg-background px-4">
         <div className="max-w-md text-center">
           <h1 className="text-xl font-semibold">Something went wrong</h1>
-          <p className="mt-2 text-sm text-muted-foreground">{this.state.error?.message || 'An unexpected error occurred.'}</p>
+          <p className="mt-2 text-sm text-muted-foreground">
+            {this.state.error?.message || "An unexpected error occurred."}
+          </p>
           <div className="mt-6 flex flex-wrap justify-center gap-2">
             <button
               onClick={() => this.reset()}
@@ -40,7 +46,12 @@ export class ErrorBoundaryClass extends React.Component<Props, State> {
             >
               Try again
             </button>
-            <a href="/" className="rounded-full bg-secondary px-5 py-2.5 text-sm font-medium text-secondary-foreground hover:opacity-90 transition-opacity">Go home</a>
+            <a
+              href="/"
+              className="rounded-full bg-secondary px-5 py-2.5 text-sm font-medium text-secondary-foreground hover:opacity-90 transition-opacity"
+            >
+              Go home
+            </a>
           </div>
         </div>
       </div>
@@ -53,16 +64,28 @@ export default function ErrorBoundary({ error, reset }: { error?: Error; reset?:
   const navigate = useNavigate();
   const handleRetry = () => {
     if (reset) reset();
-    navigate({ to: '/' });
+    navigate({ to: "/" });
   };
   return (
     <div className="flex min-h-screen items-center justify-center bg-background px-4">
       <div className="max-w-md text-center">
         <h1 className="text-xl font-semibold">Something went wrong</h1>
-        <p className="mt-2 text-sm text-muted-foreground">{error?.message || 'An unexpected error occurred.'}</p>
+        <p className="mt-2 text-sm text-muted-foreground">
+          {error?.message || "An unexpected error occurred."}
+        </p>
         <div className="mt-6 flex flex-wrap justify-center gap-2">
-          <button onClick={handleRetry} className="rounded-full bg-gradient-primary px-5 py-2.5 text-sm font-medium text-primary-foreground hover:opacity-90 transition-opacity">Try again</button>
-          <a href="/" className="rounded-full bg-secondary px-5 py-2.5 text-sm font-medium text-secondary-foreground hover:opacity-90 transition-opacity">Go home</a>
+          <button
+            onClick={handleRetry}
+            className="rounded-full bg-gradient-primary px-5 py-2.5 text-sm font-medium text-primary-foreground hover:opacity-90 transition-opacity"
+          >
+            Try again
+          </button>
+          <a
+            href="/"
+            className="rounded-full bg-secondary px-5 py-2.5 text-sm font-medium text-secondary-foreground hover:opacity-90 transition-opacity"
+          >
+            Go home
+          </a>
         </div>
       </div>
     </div>

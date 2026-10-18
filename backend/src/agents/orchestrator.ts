@@ -33,20 +33,27 @@ export class Orchestrator {
 
     if (safety.escalate) {
       this.io.to(consultationId).emit('consultation:emergency-alert', { message: safety.message });
-      // also store emergency event
       await prisma.emergencyEvent.create({ data: { consultationId, type: 'safety', message: safety.message } });
-      return;
     }
 
-    // Step 4: hospital recommendation
-    const hospitalAgent = new HospitalAgent();
-    const hospitals = await hospitalAgent.run({ symptoms, location: payload.location });
+    const urgency = safety.escalate
+      ? 'emergency'
+      : risk.level === 'critical' || risk.level === 'high'
+        ? 'urgent'
+        : 'routine';
+    const hospitals =
+      urgency === 'urgent' || urgency === 'emergency'
+        ? await new HospitalAgent().run()
+        : [];
     this.io.to(consultationId).emit('consultation:hospital-update', hospitals);
 
-    // Step 5: appointment suggestion / booking (deferred)
-    const appointmentAgent = new AppointmentAgent();
-    const appointment = await appointmentAgent.run({ hospitals, consultationId });
-    this.io.to(consultationId).emit('consultation:appointment-update', appointment);
+    const appointment =
+      hospitals.length > 0
+        ? await new AppointmentAgent().run({ hospitals, consultationId })
+        : undefined;
+    if (appointment) {
+      this.io.to(consultationId).emit('consultation:appointment-update', appointment);
+    }
 
     // Step 6: report generation
     const reportAgent = new ReportAgent();

@@ -1,6 +1,7 @@
-import axios from 'axios';
-import { ConversationContext, Symptom, RiskAssessment } from '../types/consultation.js';
+import axios, { AxiosError } from 'axios';
+import { ConversationContext, RiskAssessment, Symptom } from '../types/consultation.js';
 import { prisma } from '../database/client.js';
+import { AIServiceUnavailableError, validateAndMapWorkflowResult } from './aiResponseBoundary.js';
 
 export interface AgentResponse {
   agent: string;
@@ -9,9 +10,25 @@ export interface AgentResponse {
   timestamp: Date;
 }
 
+export interface ProcessHistoryEntry {
+  speaker: 'patient' | 'ai' | 'system';
+  text: string;
+  timestamp?: string;
+}
+
+export interface ProcessRequest {
+  sessionId: string;
+  conversationId: string;
+  language: string;
+  input: string;
+  metadata: {
+    conversationHistory: ProcessHistoryEntry[];
+  };
+}
+
 export interface OrchestrationResult {
   symptoms: Symptom[];
-  riskAssessment: RiskAssessment;
+  riskAssessment?: RiskAssessment;
   safetyIssues?: string[];
   recommendations?: string[];
   nextAction?: string;
@@ -19,131 +36,56 @@ export interface OrchestrationResult {
   emergencyMessage?: string;
 }
 
-interface OrchestratorWorkflowResult {
-  workflowId: string;
-  sessionId: string;
-  conversationId: string;
-  language: string;
-  workflowStatus: string;
-  activeAgent?: string;
-  workflowHistory?: unknown[];
-  response?: {
-    summary?: string;
-    symptoms?: Array<Symptom | string>;
-    risk?: string;
-    riskScore?: number;
-    confidence?: string;
-    recommendation?: string;
-    recommendations?: string[];
-    nextAction?: string;
-    emergencyMessage?: string;
-    safetyIssues?: string[];
-    metadata?: Record<string, unknown>;
+export function buildProcessRequest(context: ConversationContext): ProcessRequest {
+  const patientTurn = [...context.history].reverse().find((entry) => entry.speaker === 'patient');
+  const conversationHistory = context.history.map((entry) => ({
+    speaker: entry.speaker,
+    text: entry.text,
+    ...(entry.timestamp ? { timestamp: new Date(entry.timestamp).toISOString() } : {}),
+  }));
+
+  return {
+    sessionId: context.consultationId,
+    conversationId: context.consultationId,
+    language: context.language,
+    input: patientTurn ? `patient: ${patientTurn.text}` : '',
+    metadata: {
+      conversationHistory,
+    },
   };
-  emergencyDetected?: boolean;
 }
+
+type ProcessRequestTransport = (
+  url: string,
+  payload: ProcessRequest,
+  options: { timeout: number },
+) => Promise<unknown>;
 
 export class AIOrchestratorService {
   private aiServiceUrl: string;
-  private agentResponses: Map<string, AgentResponse[]> = new Map();
+  private readonly requestTransport: ProcessRequestTransport;
 
-  constructor(aiServiceUrl: string = 'http://localhost:8000') {
+  constructor(aiServiceUrl: string = 'http://localhost:8000', requestTransport?: ProcessRequestTransport) {
     this.aiServiceUrl = aiServiceUrl.replace(/\/$/, '');
+    this.requestTransport =
+      requestTransport ??
+      ((url, payload, options) =>
+        axios.post(url, payload, {
+          timeout: options.timeout,
+        }));
   }
 
   async orchestrateConsultation(context: ConversationContext): Promise<OrchestrationResult> {
+    const payload = buildProcessRequest(context);
+    const url = `${this.aiServiceUrl}/process`;
+
     try {
-      const requestPayload = {
-        sessionId: context.consultationId,
-        conversationId: context.consultationId,
-        language: context.language,
-        input:
-          context.history.length > 0
-            ? context.history.map((entry) => `${entry.speaker}: ${entry.text}`).join('\n')
-            : context.consultationId,
-        metadata: {
-          conversationHistory: context.history.map((entry) => ({
-            speaker: entry.speaker,
-            text: entry.text,
-            timestamp: entry.timestamp,
-          })),
-        },
-      };
-
-      const response = await axios.post<OrchestratorWorkflowResult>(`${this.aiServiceUrl}/process`, requestPayload, {
-        timeout: 15000,
-      });
-
-      const workflowResult = response.data;
-      await this.storeAgentLogs(context.consultationId, {
-        request: requestPayload,
-        workflowResult,
-      });
-
-      return this.mapWorkflowResult(workflowResult);
+      const rawResult = await this.requestTransport(url, payload, { timeout: 15000 });
+      return validateAndMapWorkflowResult(rawResult);
     } catch (error) {
-      console.error('Orchestration Error:', error);
+      if (error instanceof AIServiceUnavailableError) throw error;
+      if (isUpstreamUnavailable(error)) throw new AIServiceUnavailableError();
       throw error;
-    }
-  }
-
-  private mapWorkflowResult(workflowResult: OrchestratorWorkflowResult): OrchestrationResult {
-    const response = workflowResult.response || {};
-    const symptoms: Symptom[] = Array.isArray(response.symptoms)
-      ? response.symptoms.map((value) => {
-          if (typeof value === 'string') {
-            return { id: '', name: value };
-          }
-          return {
-            id: (value as Symptom).id || '',
-            name: (value as Symptom).name || String(value),
-            duration: (value as Symptom).duration,
-            severity: (value as Symptom).severity,
-            reported: (value as Symptom).reported,
-          };
-        })
-      : [];
-
-    const riskAssessment: RiskAssessment = {
-      riskScore: typeof response.riskScore === 'number' ? response.riskScore : 0,
-      level: typeof response.risk === 'string' ? (response.risk as RiskAssessment['level']) : 'low',
-      confidence: response.confidence ? Number(response.confidence) || 0 : 0,
-      details:
-        typeof response?.metadata?.details === 'string'
-          ? (response.metadata.details as string)
-          : undefined,
-    };
-
-    const recommendations = Array.isArray(response.recommendations)
-      ? response.recommendations
-      : response.recommendation
-      ? [response.recommendation]
-      : [];
-
-    return {
-      symptoms,
-      riskAssessment,
-      safetyIssues: Array.isArray(response.safetyIssues) ? response.safetyIssues : [],
-      recommendations,
-      nextAction:
-        response.nextAction ??
-        (workflowResult.emergencyDetected ? 'emergency-escalation' : 'appointment-booking'),
-      shouldEscalate: workflowResult.emergencyDetected ?? false,
-      emergencyMessage: response.emergencyMessage,
-    };
-  }
-
-  private async storeAgentLogs(consultationId: string, data: unknown): Promise<void> {
-    try {
-      await prisma.agentLog.create({
-        data: {
-          consultationId,
-          agentName: 'orchestrator',
-          payload: JSON.stringify(data),
-        },
-      });
-    } catch (error) {
-      console.error('Store Agent Logs Error:', error);
     }
   }
 
@@ -186,4 +128,29 @@ export class AIOrchestratorService {
       return text;
     }
   }
+}
+
+function isUpstreamUnavailable(error: unknown): boolean {
+  if (error instanceof AxiosError) {
+    const status = error.response?.status;
+    if (status === 503 || status === 504 || status === 429) return true;
+    if (error.code === 'ECONNABORTED' || error.code === 'ETIMEDOUT' || error.code === 'ECONNRESET') {
+      return true;
+    }
+    if (!error.response) return true;
+  }
+
+  if (typeof error === 'object' && error !== null && 'code' in error) {
+    const code = error.code;
+    if (code === 'ECONNABORTED' || code === 'ETIMEDOUT' || code === 'ECONNRESET') {
+      return true;
+    }
+  }
+
+  if (error instanceof Error) {
+    const message = error.message.toLowerCase();
+    return message.includes('timeout') || message.includes('timed out') || message.includes('network');
+  }
+
+  return false;
 }

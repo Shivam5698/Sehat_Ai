@@ -1,6 +1,6 @@
-import { io, Socket } from 'socket.io-client';
+import { io, Socket } from "socket.io-client";
 
-const SOCKET_URL = import.meta.env.VITE_SOCKET_URL || 'http://localhost:5000';
+const SOCKET_URL = import.meta.env.VITE_SOCKET_URL || "http://localhost:5000";
 
 let socket: Socket | null = null;
 
@@ -10,30 +10,36 @@ export const socketService = {
       return socket;
     }
 
+    const token = window.localStorage.getItem("token");
+    if (!token) {
+      throw new Error("Cannot connect to the socket without an authentication token.");
+    }
+
     socket = io(SOCKET_URL, {
+      auth: { token },
+      withCredentials: true,
       reconnection: true,
       reconnectionDelay: 1000,
       reconnectionDelayMax: 5000,
       reconnectionAttempts: 5,
-      transports: ['websocket', 'polling'],
+      transports: ["websocket", "polling"],
     });
 
-    socket.on('connect', () => {
-      console.log('[SOCKET] Connected:', socket?.id);
+    socket.on("connect", () => {
+      console.log("[SOCKET] Connected:", socket?.id);
       // Emit consultation start
-      socket?.emit('consultation:start', {
+      socket?.emit("consultation:start", {
         consultationId,
-        userId: localStorage.getItem('userId'),
-        language: localStorage.getItem('language') || 'en',
+        language: localStorage.getItem("language") || "en",
       });
     });
 
-    socket.on('disconnect', () => {
-      console.log('[SOCKET] Disconnected');
+    socket.on("disconnect", () => {
+      console.log("[SOCKET] Disconnected");
     });
 
-    socket.on('error', (error) => {
-      console.error('[SOCKET] Error:', error);
+    socket.on("error", (error) => {
+      console.error("[SOCKET] Error:", error);
     });
 
     return socket;
@@ -41,6 +47,7 @@ export const socketService = {
 
   disconnect() {
     if (socket) {
+      socket.removeAllListeners();
       socket.disconnect();
       socket = null;
     }
@@ -53,92 +60,92 @@ export const socketService = {
   // Consultation Events
   onConsultationStarted(callback: (data: any) => void) {
     if (socket) {
-      socket.on('consultation:started', callback);
+      socket.on("consultation:started", callback);
     }
   },
 
   onConsultationEnded(callback: (data: any) => void) {
     if (socket) {
-      socket.on('consultation:ended', callback);
+      socket.on("consultation:ended", callback);
     }
   },
 
   // Audio Events
   emitAudioChunk(consultationId: string, chunk: Buffer) {
     if (socket) {
-      socket.emit('audio:stream', {
+      socket.emit("audio:stream", {
         consultationId,
-        chunk: chunk.toString('base64'),
+        chunk: chunk.toString("base64"),
       });
     }
   },
 
   onAudioReceived(callback: (data: any) => void) {
     if (socket) {
-      socket.on('audio:received', callback);
+      socket.on("audio:received", callback);
     }
   },
 
   flushAudio(consultationId: string) {
     if (socket) {
-      socket.emit('audio:flush', { consultationId });
+      socket.emit("audio:flush", { consultationId });
     }
   },
 
   // AI Processing Events
   onAIProcessing(callback: (data: any) => void) {
     if (socket) {
-      socket.on('ai:processing', callback);
+      socket.on("ai:processing", callback);
     }
   },
 
   onAIResponse(callback: (data: any) => void) {
     if (socket) {
-      socket.on('ai:response', callback);
+      socket.on("ai:response", callback);
     }
   },
 
   onAIError(callback: (data: any) => void) {
     if (socket) {
-      socket.on('ai:error', callback);
+      socket.on("ai:error", callback);
     }
   },
 
   // Transcription Events
   onTranscript(callback: (data: any) => void) {
     if (socket) {
-      socket.on('consultation:transcript', callback);
+      socket.on("consultation:transcript", callback);
     }
   },
 
   // WebRTC Events
   emitWebRTCOffer(consultationId: string, offer: RTCSessionDescriptionInit) {
     if (socket) {
-      socket.emit('webrtc:offer', { consultationId, offer });
+      socket.emit("webrtc:offer", { consultationId, offer });
     }
   },
 
   onWebRTCOffer(callback: (data: any) => void) {
     if (socket) {
-      socket.on('webrtc:offer', callback);
+      socket.on("webrtc:offer", callback);
     }
   },
 
   emitWebRTCAnswer(consultationId: string, answer: RTCSessionDescriptionInit, toSocketId: string) {
     if (socket) {
-      socket.emit('webrtc:answer', { consultationId, answer, toSocketId });
+      socket.emit("webrtc:answer", { consultationId, answer, toSocketId });
     }
   },
 
   onWebRTCAnswer(callback: (data: any) => void) {
     if (socket) {
-      socket.on('webrtc:answer', callback);
+      socket.on("webrtc:answer", callback);
     }
   },
 
   emitICECandidate(consultationId: string, candidate: RTCIceCandidate) {
     if (socket) {
-      socket.emit('webrtc:ice-candidate', {
+      socket.emit("webrtc:ice-candidate", {
         consultationId,
         candidate: {
           candidate: candidate.candidate,
@@ -151,76 +158,76 @@ export const socketService = {
 
   onICECandidate(callback: (data: any) => void) {
     if (socket) {
-      socket.on('webrtc:ice-candidate', callback);
+      socket.on("webrtc:ice-candidate", callback);
     }
   },
 
   emitWebRTCConnected(consultationId: string) {
     if (socket) {
-      socket.emit('webrtc:connected', { consultationId });
+      socket.emit("webrtc:connected", { consultationId });
     }
   },
 
   onWebRTCConnectionStatus(callback: (data: any) => void) {
     if (socket) {
-      socket.on('webrtc:connection-status', callback);
+      socket.on("webrtc:connection-status", callback);
     }
   },
 
   // Avatar Events
   emitAvatarInit(consultationId: string, avatarId: string) {
     if (socket) {
-      socket.emit('avatar:init', { consultationId, avatarId });
+      socket.emit("avatar:init", { consultationId, avatarId });
     }
   },
 
   onAvatarInitialized(callback: (data: any) => void) {
     if (socket) {
-      socket.on('avatar:initialized', callback);
+      socket.on("avatar:initialized", callback);
     }
   },
 
-  emitAvatarSpeak(consultationId: string, text: string, emotion: string = 'neutral') {
+  emitAvatarSpeak(consultationId: string, text: string, emotion: string = "neutral") {
     if (socket) {
-      socket.emit('avatar:speak', { consultationId, text, emotion });
+      socket.emit("avatar:speak", { consultationId, text, emotion });
     }
   },
 
   onAvatarSpeaking(callback: (data: any) => void) {
     if (socket) {
-      socket.on('avatar:speaking', callback);
+      socket.on("avatar:speaking", callback);
     }
   },
 
   onAvatarError(callback: (data: any) => void) {
     if (socket) {
-      socket.on('avatar:error', callback);
+      socket.on("avatar:error", callback);
     }
   },
 
   // Dashboard Events
   joinDashboard(userId: string) {
     if (socket) {
-      socket.emit('dashboard:join', { userId });
+      socket.emit("dashboard:join", { userId });
     }
   },
 
   onDashboardUpdate(callback: (data: any) => void) {
     if (socket) {
-      socket.on('dashboard:update', callback);
+      socket.on("dashboard:update", callback);
     }
   },
 
   onConsultationDashboardUpdate(callback: (data: any) => void) {
     if (socket) {
-      socket.on('consultation:dashboard-update', callback);
+      socket.on("consultation:dashboard-update", callback);
     }
   },
 
   // Emergency Events
   onEmergencyEscalation(callback: (data: any) => void) {
     if (socket) {
-      socket.on('emergency:escalation', callback);
+      socket.on("emergency:escalation", callback);
     }
   },
 

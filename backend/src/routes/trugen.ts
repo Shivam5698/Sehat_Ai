@@ -1,6 +1,10 @@
 import { Router } from 'express';
-import { createTrugenSession, streamAudio, avatarSpeak } from '../controllers/trugenController.js';
 import { requireAuth } from '../middleware/auth.js';
+import {
+  createTrugenSession,
+  streamAudio,
+  avatarSpeak,
+} from '../controllers/trugenController.js';
 
 export const trugenRouter = Router();
 

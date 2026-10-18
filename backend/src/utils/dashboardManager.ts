@@ -66,7 +66,7 @@ export class DashboardManager {
 
   emitAppointmentUpdate(consultationId: string, userId: string, appointment: any) {
     const update: DashboardUpdate = {
-      type: 'appointment:booked',
+      type: 'appointment:suggested',
       consultationId,
       userId,
       data: appointment,
@@ -150,11 +150,11 @@ export class NotificationManager {
     });
   }
 
-  notifyAppointmentBooked(userId: string, hospitalName: string, date: string) {
+  notifyAppointmentSuggested(userId: string, hospitalName: string, date: string) {
     this.io.to(`user:${userId}`).emit('notification', {
-      type: 'appointment_booked',
-      message: `Appointment booked at ${hospitalName} on ${date}`,
-      severity: 'success',
+      type: 'appointment_suggested',
+      message: `Appointment suggested at ${hospitalName} for ${date}`,
+      severity: 'info',
       timestamp: new Date(),
     });
   }

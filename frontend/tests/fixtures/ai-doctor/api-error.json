@@ -1,0 +1,9 @@
+{
+  "testData": true,
+  "scenario": "api-error",
+  "status": 400,
+  "payload": {
+    "ok": false,
+    "message": "Missing consultationId or transcript"
+  }
+}

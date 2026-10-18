@@ -7,6 +7,8 @@ import { initSocket } from './socket/index.js';
 import { prisma } from './database/client.js';
 import { redisClient } from './database/redisClient.js';
 
+config.validateJwtSecrets();
+
 async function verifyDependencies() {
   try {
     await prisma.$connect();
@@ -40,7 +42,7 @@ async function verifyDependencies() {
 }
 
 const server = http.createServer(app);
-const io = new Server(server, { cors: { origin: '*' } });
+const io = new Server(server, { cors: { origin: config.corsOrigins } });
 
 initSocket(io);
 

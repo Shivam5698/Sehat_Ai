@@ -3,18 +3,40 @@ import { prisma } from '../database/client.js';
 import { TruGenService } from '../services/trugenService.js';
 import { AIGatewayService } from '../integrations/ai-gateway/aiGateway.service.js';
 import { config } from '../config/index.js';
-import { v4 as uuidv4 } from 'uuid';
 import { VideoSessionManager } from '../video/session-manager/sessionManager.js';
+import type { AuthRequest } from '../middleware/auth.js';
 
 const trugenService = new TruGenService(config.trugen.apiKey, config.trugen.baseUrl, config.trugen.region);
 const aiGatewayService = new AIGatewayService();
 const videoSessionManager = new VideoSessionManager();
 
+async function findOwnedConsultation(consultationId: string, userId: string) {
+  return prisma.consultation.findFirst({
+    where: { id: consultationId, userId },
+  });
+}
+
+async function findOwnedTruGenSession(sessionId: string, userId: string) {
+  const session = await videoSessionManager.getSessionByTruGenSessionId(sessionId);
+  if (!session) return null;
+  const consultation = await findOwnedConsultation(session.consultationId, userId);
+  return consultation ? session : null;
+}
+
+function getUserId(req: Request): string | undefined {
+  const userId = (req as AuthRequest).user?.sub;
+  return typeof userId === 'string' && userId.length > 0 ? userId : undefined;
+}
+
 export async function initializeVideoSession(req: Request, res: Response) {
   try {
-    const userId = (req as any).user.sub;
+    const userId = getUserId(req);
     const { consultationId, avatarId } = req.body;
     const effectiveAvatarId = avatarId || config.trugen.avatarId;
+
+    if (!userId) {
+      return res.status(404).json({ ok: false, message: 'Consultation not found' });
+    }
 
     if (!consultationId || !effectiveAvatarId) {
       return res.status(400).json({
@@ -24,15 +46,10 @@ export async function initializeVideoSession(req: Request, res: Response) {
     }
 
     // Verify consultation belongs to user
-    const consultation = await prisma.consultation.findUnique({
-      where: { id: consultationId },
-    });
+    const consultation = await findOwnedConsultation(consultationId, userId);
 
-    if (!consultation || consultation.userId !== userId) {
-      return res.status(403).json({
-        ok: false,
-        message: 'Unauthorized',
-      });
+    if (!consultation) {
+      return res.status(404).json({ ok: false, message: 'Consultation not found' });
     }
 
     // Create TruGen session using the configured agent and avatar
@@ -42,6 +59,13 @@ export async function initializeVideoSession(req: Request, res: Response) {
       language: consultation.language || 'en',
       quality: 'high',
     });
+    await videoSessionManager.createSession(
+      consultationId,
+      userId,
+      consultation.language || 'en',
+      effectiveAvatarId,
+      trugenSession.id,
+    );
 
     res.json({
       ok: true,
@@ -61,8 +85,12 @@ export async function initializeVideoSession(req: Request, res: Response) {
 
 export async function startVideoStream(req: Request, res: Response) {
   try {
+    const userId = getUserId(req);
     const { sessionId } = req.body;
 
+    if (!userId) {
+      return res.status(404).json({ ok: false, message: 'Consultation not found' });
+    }
     if (!sessionId) {
       return res.status(400).json({
         ok: false,
@@ -70,12 +98,13 @@ export async function startVideoStream(req: Request, res: Response) {
       });
     }
 
-    await trugenService.startStreaming(sessionId);
-
-    const session = await videoSessionManager.getSessionByTruGenSessionId(sessionId);
-    if (session) {
-      await videoSessionManager.updateSession(session.consultationId, { status: 'streaming' });
+    const session = await findOwnedTruGenSession(sessionId, userId);
+    if (!session) {
+      return res.status(404).json({ ok: false, message: 'Consultation not found' });
     }
+
+    await trugenService.startStreaming(sessionId);
+    await videoSessionManager.updateSession(session.consultationId, { status: 'streaming' });
 
     res.json({
       ok: true,
@@ -94,11 +123,14 @@ export async function startVideoStream(req: Request, res: Response) {
 
 export async function joinVideoSession(req: Request, res: Response) {
   try {
-    const userId = (req as any).user.sub;
+    const userId = getUserId(req);
     const { consultationId, socketId } = req.body;
 
     if (!consultationId || !socketId) {
       return res.status(400).json({ ok: false, message: 'Missing consultationId or socketId' });
+    }
+    if (!userId || !(await findOwnedConsultation(consultationId, userId))) {
+      return res.status(404).json({ ok: false, message: 'Consultation not found' });
     }
 
     const participants = await videoSessionManager.joinSession(consultationId, socketId);
@@ -111,10 +143,14 @@ export async function joinVideoSession(req: Request, res: Response) {
 
 export async function leaveVideoSession(req: Request, res: Response) {
   try {
+    const userId = getUserId(req);
     const { consultationId, socketId } = req.body;
 
     if (!consultationId || !socketId) {
       return res.status(400).json({ ok: false, message: 'Missing consultationId or socketId' });
+    }
+    if (!userId || !(await findOwnedConsultation(consultationId, userId))) {
+      return res.status(404).json({ ok: false, message: 'Consultation not found' });
     }
 
     const participants = await videoSessionManager.leaveSession(consultationId, socketId);
@@ -127,10 +163,14 @@ export async function leaveVideoSession(req: Request, res: Response) {
 
 export async function reconnectVideoSession(req: Request, res: Response) {
   try {
+    const userId = getUserId(req);
     const { consultationId, socketId } = req.body;
 
     if (!consultationId || !socketId) {
       return res.status(400).json({ ok: false, message: 'Missing consultationId or socketId' });
+    }
+    if (!userId || !(await findOwnedConsultation(consultationId, userId))) {
+      return res.status(404).json({ ok: false, message: 'Consultation not found' });
     }
 
     const participants = await videoSessionManager.reconnectSession(consultationId, socketId);
@@ -143,7 +183,12 @@ export async function reconnectVideoSession(req: Request, res: Response) {
 
 export async function endVideoSession(req: Request, res: Response) {
   try {
+    const userId = getUserId(req);
     const { sessionId } = req.body;
+
+    if (!userId) {
+      return res.status(404).json({ ok: false, message: 'Consultation not found' });
+    }
 
     if (!sessionId) {
       return res.status(400).json({
@@ -152,11 +197,12 @@ export async function endVideoSession(req: Request, res: Response) {
       });
     }
 
-    const session = await videoSessionManager.getSessionByTruGenSessionId(sessionId);
-    if (session) {
-      await videoSessionManager.endSession(session.consultationId);
+    const session = await findOwnedTruGenSession(sessionId, userId);
+    if (!session) {
+      return res.status(404).json({ ok: false, message: 'Consultation not found' });
     }
 
+    await videoSessionManager.endSession(session.consultationId);
     await trugenService.endSession(sessionId);
 
     res.json({
@@ -176,13 +222,23 @@ export async function endVideoSession(req: Request, res: Response) {
 
 export async function getVideoSessionStatus(req: Request, res: Response) {
   try {
+    const userId = getUserId(req);
     const { sessionId } = req.params;
+
+    if (!userId) {
+      return res.status(404).json({ ok: false, message: 'Consultation not found' });
+    }
 
     if (!sessionId) {
       return res.status(400).json({
         ok: false,
         message: 'Missing sessionId',
       });
+    }
+
+    const ownedSession = await findOwnedTruGenSession(sessionId, userId);
+    if (!ownedSession) {
+      return res.status(404).json({ ok: false, message: 'Consultation not found' });
     }
 
     const session = await trugenService.getSessionStatus(sessionId);
@@ -210,12 +266,20 @@ export async function getVideoSessionStatus(req: Request, res: Response) {
 
 export async function listSessionParticipants(req: Request, res: Response) {
   try {
+    const userId = getUserId(req);
     const { sessionId } = req.params;
+
+    if (!userId) {
+      return res.status(404).json({ ok: false, message: 'Consultation not found' });
+    }
 
     if (!sessionId) {
       return res.status(400).json({ ok: false, message: 'Missing sessionId' });
     }
 
+    if (!(await findOwnedConsultation(sessionId, userId))) {
+      return res.status(404).json({ ok: false, message: 'Consultation not found' });
+    }
     const session = await videoSessionManager.getSession(sessionId);
     if (!session) {
       return res.status(404).json({ ok: false, message: 'Session not found' });
@@ -225,38 +289,6 @@ export async function listSessionParticipants(req: Request, res: Response) {
   } catch (error) {
     console.error('List session participants error:', error);
     res.status(500).json({ ok: false, message: 'Failed to list session participants', error: (error as Error).message });
-  }
-}
-
-export async function avatarSpeak(req: Request, res: Response) {
-  try {
-    const { sessionId, text, language, emotion = 'neutral' } = req.body;
-
-    if (!sessionId || !text) {
-      return res.status(400).json({
-        ok: false,
-        message: 'Missing sessionId or text',
-      });
-    }
-
-    const response = await trugenService.generateSpeechWithEmotion(
-      sessionId,
-      text,
-      language || 'en',
-      emotion
-    );
-
-    res.json({
-      ok: true,
-      response,
-    });
-  } catch (error) {
-    console.error('Avatar speak error:', error);
-    res.status(500).json({
-      ok: false,
-      message: 'Failed to generate avatar speech',
-      error: (error as Error).message,
-    });
   }
 }
 
@@ -280,17 +312,18 @@ export async function listAvailableAvatars(req: Request, res: Response) {
 
 export async function sendVideoTranscript(req: Request, res: Response) {
   try {
-    const userId = (req as any).user.sub;
+    const userId = getUserId(req);
     const { consultationId, transcript, language, history } = req.body;
 
     if (!consultationId || !transcript) {
       return res.status(400).json({ ok: false, message: 'Missing consultationId or transcript' });
     }
-
-    const consultation = await prisma.consultation.findUnique({ where: { id: consultationId } });
-    if (!consultation || consultation.userId !== userId) {
-      return res.status(403).json({ ok: false, message: 'Unauthorized' });
+    if (!userId) {
+      return res.status(404).json({ ok: false, message: 'Consultation not found' });
     }
+
+    const consultation = await findOwnedConsultation(consultationId, userId);
+    if (!consultation) return res.status(404).json({ ok: false, message: 'Consultation not found' });
 
     await prisma.transcript.create({
       data: {
@@ -317,10 +350,19 @@ export async function sendVideoTranscript(req: Request, res: Response) {
 
 export async function avatarRespond(req: Request, res: Response) {
   try {
+    const userId = getUserId(req);
     const { sessionId, text, language = 'en', emotion = 'neutral' } = req.body;
+
+    if (!userId) {
+      return res.status(404).json({ ok: false, message: 'Consultation not found' });
+    }
 
     if (!sessionId || !text) {
       return res.status(400).json({ ok: false, message: 'Missing sessionId or text' });
+    }
+
+    if (!(await findOwnedTruGenSession(sessionId, userId))) {
+      return res.status(404).json({ ok: false, message: 'Consultation not found' });
     }
 
     const response = await trugenService.generateSpeechWithEmotion(sessionId, text, language, emotion);
@@ -334,13 +376,22 @@ export async function avatarRespond(req: Request, res: Response) {
 
 export async function pauseVideoSession(req: Request, res: Response) {
   try {
+    const userId = getUserId(req);
     const { sessionId } = req.body;
+
+    if (!userId) {
+      return res.status(404).json({ ok: false, message: 'Consultation not found' });
+    }
 
     if (!sessionId) {
       return res.status(400).json({
         ok: false,
         message: 'Missing sessionId',
       });
+    }
+
+    if (!(await findOwnedTruGenSession(sessionId, userId))) {
+      return res.status(404).json({ ok: false, message: 'Consultation not found' });
     }
 
     await trugenService.pauseSession(sessionId);
@@ -362,13 +413,22 @@ export async function pauseVideoSession(req: Request, res: Response) {
 
 export async function resumeVideoSession(req: Request, res: Response) {
   try {
+    const userId = getUserId(req);
     const { sessionId } = req.body;
+
+    if (!userId) {
+      return res.status(404).json({ ok: false, message: 'Consultation not found' });
+    }
 
     if (!sessionId) {
       return res.status(400).json({
         ok: false,
         message: 'Missing sessionId',
       });
+    }
+
+    if (!(await findOwnedTruGenSession(sessionId, userId))) {
+      return res.status(404).json({ ok: false, message: 'Consultation not found' });
     }
 
     await trugenService.resumeSession(sessionId);

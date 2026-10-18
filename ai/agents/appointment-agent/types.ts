@@ -12,6 +12,6 @@ export interface AppointmentAgentOutput {
   doctor: string;
   specialty: string;
   scheduledAt: string;
-  status: string;
+  status: "suggested";
   notes: string;
 }

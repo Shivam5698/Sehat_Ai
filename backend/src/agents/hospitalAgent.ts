@@ -1,6 +1,24 @@
+import { prisma } from '../database/client.js';
+
+export interface HospitalRecommendation {
+  id: string;
+  name: string;
+  emergencyAvailable: boolean;
+  sample: boolean;
+}
+
 export class HospitalAgent {
-  async run({ symptoms, location }: { symptoms: any; location?: any }) {
-    // Minimal demo: return a static nearby hospital list; in prod query real dataset or maps API
-    return [{ id: 'h1', name: 'Sehat General Hospital', address: '1 Health St', latitude: 28.6139, longitude: 77.2090, emergency: true }];
+  async run(): Promise<HospitalRecommendation[]> {
+    const hospitals = await prisma.hospital.findMany({
+      select: { id: true, name: true, emergency: true },
+      orderBy: [{ emergency: 'desc' }, { name: 'asc' }],
+    });
+
+    return hospitals.map((hospital: { id: string; name: string; emergency: boolean }) => ({
+      id: hospital.id,
+      name: hospital.name,
+      emergencyAvailable: hospital.emergency,
+      sample: hospital.id.startsWith('sample-hospital-'),
+    }));
   }
 }

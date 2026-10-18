@@ -1,7 +1,11 @@
-﻿{
+{
   "name": "sehat-ai",
   "private": true,
-  "workspaces": ["frontend", "backend", "ai"],
+  "workspaces": [
+    "frontend",
+    "backend",
+    "ai"
+  ],
   "scripts": {
     "dev:frontend": "npm --prefix frontend run dev",
     "dev:backend": "npm --prefix backend run dev",
@@ -10,6 +14,10 @@
     "build:backend": "npm --prefix backend run build",
     "build": "npm run build:frontend && npm run build:backend",
     "start": "npm --prefix backend run start",
-    "lint": "npm --prefix frontend run lint"
+    "lint": "npm --prefix frontend run lint",
+    "test": "npm --prefix backend test && npm --prefix frontend test && python -m pytest -q"
+  },
+  "dependencies": {
+    "@trugen/agent-ui": "^0.1.12"
   }
 }

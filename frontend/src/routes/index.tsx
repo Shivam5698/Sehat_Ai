@@ -246,7 +246,7 @@ function HomePage() {
                 whileInView={{ opacity: 1, y: 0 }}
                 viewport={{ once: true }}
                 transition={{ delay: i * 0.04 }}
-                whileHover={{ y: -8, shadow: "0 20px 40px rgba(0,0,0,0.1)" }}
+                whileHover={{ y: -8, boxShadow: "0 20px 40px rgba(0,0,0,0.1)" }}
                 className="rounded-3xl bg-card border border-border p-5 shadow-soft hover:shadow-medical transition-all cursor-pointer group"
               >
                 <motion.div

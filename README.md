@@ -1,6 +1,6 @@
 # Sehat AI
 
-**Intelligent AI-powered healthcare platform** providing real-time multi-agent medical consultations, hospital matching, appointment booking, and medical report generation.
+**Intelligent AI-powered healthcare platform** providing a real -time multi-agent medical consultations, hospital matching, appointment booking, and medical report generation.
 
 ## Overview
 
@@ -64,64 +64,90 @@ src/
 └── server.ts           # Server entry point (Cloudflare)
 ```
 
-## Getting Started
+## Run locally
 
 ### Prerequisites
 
-- Node.js 18+
-- Bun package manager (recommended)
-- Cloudflare account for deployment
+- Node.js 20+ and npm
+- Redis on port `6379` is optional for REST API use; real-time features may require it.
 
-### Installation
+### Environment
 
-1. **Clone the repository**
+Copy each checked-in `.env.example` to `.env` beside that example, then configure the values needed by that service. In `backend/.env`, set:
+
+```dotenv
+DATABASE_URL="file:./dev.db"
+PORT=5000
+JWT_SECRET=<a-long-random-secret>
+JWT_REFRESH_SECRET=<a-different-long-random-secret>
+```
+
+Never commit `.env` files or secrets.
+
+### Start services
+
+Prepare the backend database first:
+
+```bash
+cd backend
+npm ci
+npx prisma generate
+npx prisma migrate deploy
+npm run prisma:seed
+```
+
+Start the services in this order, each in its own terminal from the repository root:
+
+1. **Symptom agent** (`http://localhost:5001`):
    ```bash
-   git clone <repository-url>
-   cd sehat-ai
+   npm --prefix "ai/agents/symptom-agent/symptom-agent" run dev
+   ```
+2. **Severity agent** (`http://localhost:5002`):
+   ```bash
+   npm --prefix "ai/agents/severity-agent/sevarity agent" run dev
+   ```
+3. **Safety agent** (`http://localhost:5003`):
+   ```bash
+   npm --prefix "ai/agents/safety-agent/safety agent" run dev
+   ```
+4. **Backend** (`http://localhost:5000`):
+   ```bash
+   cd backend
+   npm run dev
+   ```
+5. **Frontend** (`http://localhost:5173`):
+   ```bash
+   npm --prefix frontend run dev
    ```
 
-2. **Install dependencies**
+### Backend tests
+
+```bash
+npm --prefix backend test
+```
+
+### Smoke test
+
+With the agents, backend, and frontend running, exercise the REST API:
+
+1. **Sign up**:
    ```bash
-   bun install
+   curl -X POST http://localhost:5000/api/auth/signup -H "Content-Type: application/json" -d "{\"email\":\"smoke@example.com\",\"password\":\"SmokeTest123!\",\"name\":\"Smoke Test\"}"
    ```
-
-3. **Set up environment variables**
+2. **Log in** with those credentials:
    ```bash
-   cp .env.example .env.local
-   # Edit .env.local with your configuration
+   curl -X POST http://localhost:5000/api/auth/login -H "Content-Type: application/json" -d "{\"email\":\"smoke@example.com\",\"password\":\"SmokeTest123!\"}"
    ```
-
-### Development
-
-Start the development server with live reload:
-
-```bash
-bun run dev
-```
-
-The application will be available at `http://localhost:5173`
-
-### Building
-
-Create a production build:
-
-```bash
-bun run build
-```
-
-Build for development debugging:
-
-```bash
-bun run build:dev
-```
-
-### Preview
-
-Preview the production build locally:
-
-```bash
-bun run preview
-```
+   Copy `accessToken` from the response for the next requests.
+3. **Start a consultation** (replace `<ACCESS_TOKEN>` with that token):
+   ```bash
+   curl -X POST http://localhost:5000/api/consultation/start -H "Authorization: Bearer <ACCESS_TOKEN>" -H "Content-Type: application/json" -d "{\"language\":\"en\"}"
+   ```
+   Copy `session.id` from the response.
+4. **Send a message** (replace both placeholders):
+   ```bash
+   curl -X POST http://localhost:5000/api/ai-doctor/message -H "Authorization: Bearer <ACCESS_TOKEN>" -H "Content-Type: application/json" -d "{\"consultationId\":\"<CONSULTATION_ID>\",\"message\":\"I have a mild headache since yesterday\",\"language\":\"en\"}"
+   ```
 
 ## Code Quality
 

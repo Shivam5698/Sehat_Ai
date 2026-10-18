@@ -8,6 +8,7 @@ import { consultationRouter } from './routes/consultation.js';
 import { trugenRouter } from './routes/trugen.js';
 import { videoRouter } from './routes/video.js';
 import { aiGatewayRouter } from './routes/aiGateway.js';
+import { aiDoctorRouter } from './routes/aiDoctor.js';
 import { reportRouter } from './routes/reports.js';
 import { emergencyRouter } from './routes/emergency.js';
 import { ragRouter } from './routes/rag.js';
@@ -22,6 +23,8 @@ const allowedOrigins = [
   config.frontendUrl,
   'http://localhost:5173',
   'http://localhost:4173',
+  'http://127.0.0.1:5173',
+  'http://127.0.0.1:4173',
   'http://localhost:3000',
 ].filter(Boolean);
 
@@ -43,6 +46,7 @@ app.use(json({ limit: '50mb' }));
 app.use(morgan('combined'));
 
 app.use(rateLimit({ windowMs: 1000 * 60, max: 300 }));
+const authRateLimit = rateLimit({ windowMs: 1000 * 60, max: 20 });
 
 // language detection for incoming API requests
 app.use(languageMiddleware);
@@ -58,10 +62,11 @@ app.get('/', (_req, res) => {
 app.use('/health', healthRouter);
 app.use('/api/health', healthRouter);
 
-app.use('/api/auth', authRouter);
+app.use('/api/auth', authRateLimit, authRouter);
 app.use('/api/consultation', consultationRouter);
 app.use('/api/video', videoRouter);
 app.use('/api/ai-gateway', aiGatewayRouter);
+app.use('/api/ai-doctor', aiDoctorRouter);
 app.use('/api/reports', reportRouter);
 app.use('/api/emergency', emergencyRouter);
 app.use('/api/rag', ragRouter);

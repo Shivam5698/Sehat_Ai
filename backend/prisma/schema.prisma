@@ -19,18 +19,32 @@ model User {
   role           String          @default("patient")
   createdAt      DateTime        @default(now())
   updatedAt      DateTime        @updatedAt
+  authSessions   AuthSession[]
   consultations  Consultation[]
   patientProfile PatientProfile?
   auditLogs      AuditLog[]
 }
 
+model AuthSession {
+  id               String    @id
+  userId           String
+  user             User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  refreshTokenHash String
+  expiresAt        DateTime
+  revokedAt        DateTime?
+  createdAt        DateTime  @default(now())
+
+  @@index([userId])
+}
+
 model Consultation {
   id             String          @id @default(uuid())
-  userId         String
-  user           User            @relation(fields: [userId], references: [id])
+  userId         String?
+  user           User?           @relation(fields: [userId], references: [id], onDelete: Restrict)
+  guestSessionId String?
   symptomsText   String?
   severity       String?
-  emergencyLevel String?        @default("normal")
+  emergencyLevel String?
   transcript     String?
   reportUrl      String?
   status         String          @default("initialized")
@@ -50,6 +64,8 @@ model Consultation {
   riskScores     RiskScore[]
   emergencyCases EmergencyCase[]
   createdAt      DateTime        @default(now())
+
+  @@index([guestSessionId])
 }
 
 model Transcript {
@@ -86,6 +102,7 @@ model RiskAssessment {
 model Hospital {
   id          String @id @default(uuid())
   name        String
+  address     String
   hospitalName String
   location    String
   latitude    Float
@@ -104,7 +121,7 @@ model Appointment {
   hospitalId     String?
   doctorId       String?
   scheduledFor   DateTime
-  status         String @default("booked")
+  status         String @default("suggested")
   createdAt      DateTime @default(now())
 }
 

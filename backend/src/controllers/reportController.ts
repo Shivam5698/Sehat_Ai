@@ -2,15 +2,20 @@ import { Request, Response } from 'express';
 import { prisma } from '../database/client.js';
 import { AIOrchestratorService } from '../services/aiOrchestratorService.js';
 import { config } from '../config/index.js';
+import { safeErrorName } from '../services/aiResponseBoundary.js';
+import type { AuthRequest } from '../middleware/auth.js';
 
 const orchestrator = new AIOrchestratorService(config.aiServiceUrl);
 
 export async function generateReport(req: Request, res: Response) {
   try {
-    const userId = (req as any).user.sub;
-    const { consultationId } = req.body;
+    const userId = (req as AuthRequest).user?.sub;
+    const consultationId = req.body?.consultationId;
 
-    if (!consultationId) {
+    if (!userId) {
+      return res.status(401).json({ ok: false, message: 'Authentication required' });
+    }
+    if (typeof consultationId !== 'string' || !consultationId.trim()) {
       return res.status(400).json({
         ok: false,
         message: 'Missing consultationId',
@@ -36,6 +41,12 @@ export async function generateReport(req: Request, res: Response) {
 
     // Generate report using AI
     const reportContent = await orchestrator.generateReport(consultationId);
+    if (typeof reportContent !== 'string' || !reportContent.trim()) {
+      return res.status(502).json({
+        ok: false,
+        message: 'Report generation returned no report content',
+      });
+    }
 
     // Save report to database
     const report = await prisma.medicalReport.create({
@@ -55,11 +66,10 @@ export async function generateReport(req: Request, res: Response) {
       },
     });
   } catch (error) {
-    console.error('Generate report error:', error);
+    console.error('Generate report error', { errorName: safeErrorName(error) });
     res.status(500).json({
       ok: false,
       message: 'Failed to generate report',
-      error: (error as Error).message,
     });
   }
 }
@@ -97,11 +107,10 @@ export async function getReport(req: Request, res: Response) {
       report,
     });
   } catch (error) {
-    console.error('Get report error:', error);
+    console.error('Get report error', { errorName: safeErrorName(error) });
     res.status(500).json({
       ok: false,
       message: 'Failed to get report',
-      error: (error as Error).message,
     });
   }
 }
@@ -135,11 +144,10 @@ export async function listReports(req: Request, res: Response) {
       reports,
     });
   } catch (error) {
-    console.error('List reports error:', error);
+    console.error('List reports error', { errorName: safeErrorName(error) });
     res.status(500).json({
       ok: false,
       message: 'Failed to list reports',
-      error: (error as Error).message,
     });
   }
 }
@@ -181,11 +189,10 @@ export async function deleteReport(req: Request, res: Response) {
       message: 'Report deleted',
     });
   } catch (error) {
-    console.error('Delete report error:', error);
+    console.error('Delete report error', { errorName: safeErrorName(error) });
     res.status(500).json({
       ok: false,
       message: 'Failed to delete report',
-      error: (error as Error).message,
     });
   }
 }
@@ -229,11 +236,10 @@ export async function downloadReport(req: Request, res: Response) {
       },
     });
   } catch (error) {
-    console.error('Download report error:', error);
+    console.error('Download report error', { errorName: safeErrorName(error) });
     res.status(500).json({
       ok: false,
       message: 'Failed to download report',
-      error: (error as Error).message,
     });
   }
 }

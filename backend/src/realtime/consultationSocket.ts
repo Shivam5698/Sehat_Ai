@@ -1,4 +1,5 @@
 import { Server, Socket } from 'socket.io';
+import jwt from 'jsonwebtoken';
 import { prisma } from '../database/client.js';
 import { AudioStreamProcessor } from '../services/mediaService.js';
 import { TruGenService } from '../services/trugenService.js';
@@ -28,6 +29,20 @@ interface ConsultationSession {
 
 const activeSessions = new Map<string, ConsultationSession>();
 
+async function publishConsultationEvent(
+  publisher: { publish(channel: string, message: string): Promise<unknown> },
+  message: string,
+) {
+  try {
+    await publisher.publish('sehat:consultation:events', message);
+  } catch (error) {
+    console.error(
+      '[SOCKET] Redis event publish failed:',
+      error instanceof Error ? error.message : String(error),
+    );
+  }
+}
+
 export function initConsultationSocket(io: Server) {
   const sttService = new SpeechService();
   const ttsService = new SpeechGenerationService();
@@ -40,6 +55,27 @@ export function initConsultationSocket(io: Server) {
   const dashboardEvents = new DashboardEventsService(io);
   const emergencyService = new EmergencyService();
 
+  io.use((socket, next) => {
+    const token: unknown = socket.handshake.auth?.token;
+    if (typeof token !== 'string') {
+      next(new Error('Unauthorized'));
+      return;
+    }
+
+    try {
+      const payload = jwt.verify(token, config.jwtSecret);
+      const userId = typeof payload === 'string' ? undefined : payload.sub;
+      if (typeof userId !== 'string' || userId.length === 0) {
+        next(new Error('Unauthorized'));
+        return;
+      }
+      socket.data.userId = userId;
+      next();
+    } catch {
+      next(new Error('Unauthorized'));
+    }
+  });
+
   io.on('connection', (socket: Socket) => {
     console.log('[SOCKET] Client connected:', socket.id);
 
@@ -49,11 +85,15 @@ export function initConsultationSocket(io: Server) {
 
     socket.on('consultation:start', async (payload) => {
       try {
-        const { consultationId, userId, language = 'en' } = payload;
+        const { consultationId, language = 'en' } = payload;
+        const userId = socket.data.userId as string;
+        if (typeof consultationId !== 'string') {
+          socket.emit('consultation:error', { message: 'Consultation not found' });
+          return;
+        }
 
-        // Validate consultation exists
-        const consultation = await prisma.consultation.findUnique({
-          where: { id: consultationId },
+        const consultation = await prisma.consultation.findFirst({
+          where: { id: consultationId, userId },
         });
 
         if (!consultation) {
@@ -98,7 +138,10 @@ export function initConsultationSocket(io: Server) {
         });
 
         await dashboardEvents.recordStatus(consultationId, userId, 'Listening...');
-        await redisPublisher.publish('sehat:consultation:events', JSON.stringify({ consultationId, event: 'consultation_started', language, status: 'active', timestamp: new Date().toISOString(), videoSessionId: videoSession.id }));
+        await publishConsultationEvent(
+          redisPublisher,
+          JSON.stringify({ consultationId, event: 'consultation_started', language, status: 'active', timestamp: new Date().toISOString(), videoSessionId: videoSession.id }),
+        );
 
         console.log(`[SOCKET] Consultation started: ${consultationId}`);
       } catch (error) {
@@ -110,6 +153,15 @@ export function initConsultationSocket(io: Server) {
     socket.on('consultation:join', async (payload) => {
       try {
         const { consultationId, socketId } = payload;
+        const consultation = await prisma.consultation.findFirst({
+          where: { id: consultationId, userId: socket.data.userId },
+          select: { id: true },
+        });
+        if (!consultation) {
+          socket.emit('consultation:error', { message: 'Consultation not found' });
+          return;
+        }
+
         await videoSessionManager.joinSession(consultationId, socketId || socket.id);
         socket.join(consultationId);
         socketService.emit(consultationId, 'consultation_joined', { consultationId, socketId: socketId || socket.id });
@@ -134,6 +186,15 @@ export function initConsultationSocket(io: Server) {
     socket.on('consultation:reconnect', async (payload) => {
       try {
         const { consultationId, socketId } = payload;
+        const consultation = await prisma.consultation.findFirst({
+          where: { id: consultationId, userId: socket.data.userId },
+          select: { id: true },
+        });
+        if (!consultation) {
+          socket.emit('consultation:error', { message: 'Consultation not found' });
+          return;
+        }
+
         await videoSessionManager.reconnectSession(consultationId, socketId || socket.id);
         socket.join(consultationId);
         socketService.emit(consultationId, 'consultation_reconnected', { consultationId, socketId: socketId || socket.id });
@@ -185,7 +246,10 @@ export function initConsultationSocket(io: Server) {
           consultationId,
           timestamp: new Date(),
         });
-        await redisPublisher.publish('sehat:consultation:events', JSON.stringify({ consultationId, event: 'consultation_completed', timestamp: new Date().toISOString() }));
+        await publishConsultationEvent(
+          redisPublisher,
+          JSON.stringify({ consultationId, event: 'consultation_completed', timestamp: new Date().toISOString() }),
+        );
 
         activeSessions.delete(consultationId);
         socket.leave(consultationId);
@@ -463,8 +527,8 @@ async function processAudioBuffer(
       language: sttResult.language,
     });
 
-    await redisPublisher.publish(
-      'sehat:consultation:events',
+    await publishConsultationEvent(
+      redisPublisher,
       JSON.stringify({
         consultationId,
         event: 'transcript_received',
@@ -473,7 +537,7 @@ async function processAudioBuffer(
         language: sttResult.language,
         confidence: sttResult.confidence,
         timestamp: new Date().toISOString(),
-      })
+      }),
     );
     await dashboardEvents.recordEvent(consultationId, session.userId, 'transcript_received', {
       text: sttResult.transcript,
@@ -537,14 +601,14 @@ async function processAudioBuffer(
         emergencyId: emergencyAlert.id,
       });
       await dashboardEvents.recordStatus(consultationId, session.userId, 'Emergency escalation detected');
-      await redisPublisher.publish(
-        'sehat:consultation:events',
+      await publishConsultationEvent(
+        redisPublisher,
         JSON.stringify({
           consultationId,
           event: 'emergency_detected',
           message: orchestrationResult.emergencyMessage,
           timestamp: new Date().toISOString(),
-        })
+        }),
       );
     }
 
@@ -567,8 +631,8 @@ async function processAudioBuffer(
       recommendations: orchestrationResult.recommendations,
       nextAction: orchestrationResult.nextAction,
     });
-    await redisPublisher.publish(
-      'sehat:consultation:events',
+    await publishConsultationEvent(
+      redisPublisher,
       JSON.stringify({
         consultationId,
         event: 'ai_response',
@@ -576,7 +640,7 @@ async function processAudioBuffer(
         riskLevel: orchestrationResult.riskAssessment?.level,
         nextAction: orchestrationResult.nextAction,
         timestamp: new Date().toISOString(),
-      })
+      }),
     );
 
     await dashboardEvents.recordStatus(consultationId, session.userId, 'Preparing Health Summary...');
