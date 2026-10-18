@@ -1,10 +1,12 @@
-import i18n from "i18next";
+import i18n, { type Resource, type ResourceLanguage } from "i18next";
 import { initReactI18next } from "react-i18next";
 
 // Load all translation json files under /translations using Vite's glob
-const modules = (import.meta as any).glob("../translations/*/*.json", { eager: true }) as Record<string, any>;
+const modules = import.meta.glob<{ default: ResourceLanguage }>("../translations/*/*.json", {
+  eager: true,
+});
 
-const resources: Record<string, Record<string, any>> = {};
+const resources: Resource = {};
 Object.entries(modules).forEach(([path, mod]) => {
   // path example: ../translations/en/common.json
   const parts = path.split("/");
@@ -12,17 +14,15 @@ Object.entries(modules).forEach(([path, mod]) => {
   const nsFile = parts[parts.length - 1];
   const ns = nsFile.replace(/\.json$/, "");
   resources[lang] = resources[lang] || {};
-  resources[lang][ns] = (mod as any).default || mod;
+  resources[lang][ns] = mod.default;
 });
 
 // ensure supported languages include all translation folders and requested locales
-const supportedLngs = [
-  'en','hi','ur','bn','ta','te','mr','gu','pa','ar','ml','kn'
-];
+const supportedLngs = ["en", "hi", "ur", "bn", "ta", "te", "mr", "gu", "pa", "ar", "ml", "kn"];
 
 i18n.use(initReactI18next).init({
   resources,
-  fallbackLng: 'en',
+  fallbackLng: "en",
   supportedLngs,
   ns: ["common", "home", "dashboard", "consult", "reports", "about", "contact", "auth", "ai"],
   defaultNS: "common",
@@ -32,13 +32,15 @@ i18n.use(initReactI18next).init({
 
 // Basic resource key consistency check (dev-time only) — log missing keys compared to English
 try {
-  const en = resources['en'] || {};
+  const en = resources["en"] || {};
   Object.keys(resources).forEach((lng) => {
-    if (lng === 'en') return;
+    if (lng === "en") return;
     const missing: string[] = [];
     Object.keys(en).forEach((ns) => {
-      const enNs = en[ns] || {};
-      const otherNs = (resources[lng] && resources[lng][ns]) || {};
+      const enResource = en[ns];
+      const otherResource = resources[lng]?.[ns];
+      const enNs = isTranslationObject(enResource) ? enResource : {};
+      const otherNs = isTranslationObject(otherResource) ? otherResource : {};
       Object.keys(enNs).forEach((key) => {
         if (!(key in otherNs)) missing.push(`${ns}.${key}`);
       });
@@ -56,8 +58,14 @@ i18n.on("languageChanged", (lng) => {
     document.documentElement.lang = lng;
     try {
       localStorage.setItem("sehat:lang", lng);
-    } catch (_) {}
+    } catch {
+      console.warn("Unable to persist selected language.");
+    }
   }
 });
+
+function isTranslationObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
 
 export default i18n;

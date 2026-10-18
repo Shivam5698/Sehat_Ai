@@ -1,4 +1,4 @@
-﻿import { createFileRoute, Link, useNavigate, redirect } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate, redirect } from "@tanstack/react-router";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -7,6 +7,7 @@ import { Stethoscope } from "lucide-react";
 import { FormEvent, useState } from "react";
 import team from "@/assets/team-doctors.jpg";
 import { authAPI, authStorage } from "@/services/api/client";
+import { ApiError } from "@/types/aiDoctor";
 
 export const Route = createFileRoute("/signup")({
   head: () => ({
@@ -17,9 +18,12 @@ export const Route = createFileRoute("/signup")({
       { property: "og:description", content: "Create a Sehat AI account." },
     ],
   }),
-  beforeLoad: () => {
-    if (typeof window !== "undefined" && authStorage.isAuthenticated()) {
-      throw redirect({ to: "/ai-doctor" });
+  beforeLoad: async () => {
+    if (typeof window === "undefined") return;
+    try {
+      if (await authAPI.hasValidSession()) throw redirect({ to: "/ai-doctor" });
+    } catch (error) {
+      if (!(error instanceof ApiError) && !(error instanceof TypeError)) throw error;
     }
   },
   component: SignupPage,
@@ -47,14 +51,16 @@ function SignupPage() {
         password: form.password,
         name: `${form.firstName} ${form.lastName}`.trim(),
       });
-      authStorage.setSession({
-        accessToken: result.accessToken,
-        refreshToken: result.refreshToken,
-        user: result.user,
-      });
+      authStorage.setSession({ user: result.user });
       navigate({ to: "/ai-doctor" });
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Unable to create account");
+      setError(
+        err instanceof TypeError
+          ? "Cannot reach the Sehat AI backend. Check that it is running and try again."
+          : err instanceof Error
+            ? err.message
+            : "Unable to create account",
+      );
     } finally {
       setSubmitting(false);
     }
@@ -79,27 +85,27 @@ function SignupPage() {
           <div className="space-y-3">
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <Label htmlFor="first">{t('form.firstName')}</Label>
-                <Input id="first" value={form.firstName} onChange={(e) => updateField('firstName', e.target.value)} placeholder={t('form.firstNamePlaceholder')} className="mt-1.5 rounded-xl" required />
+                <Label htmlFor="first">{t('form.firstName', { ns: 'auth' })}</Label>
+                <Input id="first" value={form.firstName} onChange={(e) => updateField('firstName', e.target.value)} placeholder={t('form.firstNamePlaceholder', { ns: 'auth' })} className="mt-1.5 rounded-xl" required />
               </div>
               <div>
-                <Label htmlFor="last">{t('form.lastName')}</Label>
-                <Input id="last" value={form.lastName} onChange={(e) => updateField('lastName', e.target.value)} placeholder={t('form.lastNamePlaceholder')} className="mt-1.5 rounded-xl" required />
+                <Label htmlFor="last">{t('form.lastName', { ns: 'auth' })}</Label>
+                <Input id="last" value={form.lastName} onChange={(e) => updateField('lastName', e.target.value)} placeholder={t('form.lastNamePlaceholder', { ns: 'auth' })} className="mt-1.5 rounded-xl" required />
               </div>
             </div>
             <div>
-              <Label htmlFor="email">{t('form.email')}</Label>
-              <Input id="email" type="email" value={form.email} onChange={(e) => updateField('email', e.target.value)} placeholder={t('form.emailPlaceholder')} className="mt-1.5 rounded-xl" required />
+              <Label htmlFor="email">{t('form.email', { ns: 'auth' })}</Label>
+              <Input id="email" type="email" autoComplete="email" value={form.email} onChange={(e) => updateField('email', e.target.value)} placeholder={t('form.emailPlaceholder', { ns: 'auth' })} className="mt-1.5 rounded-xl" required />
             </div>
             <div>
-              <Label htmlFor="password">{t('form.password')}</Label>
-              <Input id="password" type="password" value={form.password} onChange={(e) => updateField('password', e.target.value)} placeholder={t('form.passwordPlaceholder')} className="mt-1.5 rounded-xl" required />
+              <Label htmlFor="password">{t('form.password', { ns: 'auth' })}</Label>
+              <Input id="password" type="password" autoComplete="new-password" minLength={8} value={form.password} onChange={(e) => updateField('password', e.target.value)} placeholder={t('form.passwordPlaceholder', { ns: 'auth' })} className="mt-1.5 rounded-xl" required />
             </div>
           </div>
           {error ? <p className="text-sm text-destructive">{error}</p> : null}
           <Button type="submit" disabled={submitting} className="w-full rounded-full bg-gradient-primary text-primary-foreground shadow-medical h-11">{submitting ? 'Creating account...' : t('buttons.createAccount')}</Button>
           <p className="text-sm text-muted-foreground text-center">
-            {t('auth.alreadyHaveAccount')} <Link to="/login" className="text-primary font-semibold">{t('auth.signIn')}</Link>
+            {t('alreadyHaveAccount', { ns: 'auth' })} <Link to="/login" className="text-primary font-semibold">{t('signIn', { ns: 'auth' })}</Link>
           </p>
         </form>
       </div>

@@ -1,0 +1,15 @@
+{
+  "sessionId": "test-consultation-0001",
+  "conversationId": "test-consultation-0001",
+  "language": "en",
+  "input": "patient: TEST DATA ONLY: synthetic consultation transcript.",
+  "metadata": {
+    "conversationHistory": [
+      {
+        "speaker": "patient",
+        "text": "TEST DATA ONLY: synthetic consultation transcript.",
+        "timestamp": "2026-10-18T00:00:00.000Z"
+      }
+    ]
+  }
+}

@@ -1,0 +1,16 @@
+{
+  "testData": true,
+  "scenario": "structurally-valid-synthetic",
+  "payload": {
+    "ok": true,
+    "validatedResponse": {
+      "symptoms": [],
+      "riskAssessment": {
+        "riskScore": 0,
+        "level": "low",
+        "confidence": 0.5
+      },
+      "recommendations": []
+    }
+  }
+}
