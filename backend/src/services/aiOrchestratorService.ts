@@ -1,7 +1,11 @@
 import axios, { AxiosError } from 'axios';
-import { ConversationContext, RiskAssessment, Symptom } from '../types/consultation.js';
+import { ConversationContext } from '../types/consultation.js';
 import { prisma } from '../database/client.js';
-import { AIServiceUnavailableError, validateAndMapWorkflowResult } from './aiResponseBoundary.js';
+import {
+  AIServiceUnavailableError,
+  validateAndMapWorkflowResult,
+  type OrchestrationResult,
+} from './aiResponseBoundary.js';
 
 export interface AgentResponse {
   agent: string;
@@ -24,16 +28,6 @@ export interface ProcessRequest {
   metadata: {
     conversationHistory: ProcessHistoryEntry[];
   };
-}
-
-export interface OrchestrationResult {
-  symptoms: Symptom[];
-  riskAssessment?: RiskAssessment;
-  safetyIssues?: string[];
-  recommendations?: string[];
-  nextAction?: string;
-  shouldEscalate?: boolean;
-  emergencyMessage?: string;
 }
 
 export function buildProcessRequest(context: ConversationContext): ProcessRequest {

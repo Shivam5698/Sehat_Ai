@@ -9,7 +9,10 @@ import {
   buildProcessRequest,
   type ProcessRequest,
 } from "../dist/services/aiOrchestratorService.js";
-import { AIServiceUnavailableError } from "../dist/services/aiResponseBoundary.js";
+import {
+  AIServiceUnavailableError,
+  InvalidAIResponseError,
+} from "../dist/services/aiResponseBoundary.js";
 
 const requestFixturePath = join(
   process.cwd(),
@@ -42,6 +45,58 @@ test("backend request builder matches the shared Python ProcessRequest fixture",
   };
 
   assert.deepEqual(JSON.parse(JSON.stringify(buildProcessRequest(context))), fixture);
+});
+
+test("orchestration returns only validated results with a complete risk assessment", async () => {
+  const service = new AIOrchestratorService("http://127.0.0.1:8000", async () => ({
+    workflowStatus: "COMPLETED",
+    emergencyDetected: false,
+    response: {
+      symptoms: [],
+      risk: "low",
+      riskScore: 0,
+      confidence: 0.8,
+      recommendations: [],
+      safetyIssues: [],
+    },
+  }));
+  const result = await service.orchestrateConsultation({
+    consultationId: "consultation-test",
+    language: "en",
+    symptoms: [],
+    riskLevel: "unknown",
+    history: [],
+    metadata: {},
+  });
+
+  assert.deepEqual(result.riskAssessment, {
+    riskScore: 0,
+    level: "low",
+    confidence: 0.8,
+  });
+
+  const invalidService = new AIOrchestratorService("http://127.0.0.1:8000", async () => ({
+    workflowStatus: "COMPLETED",
+    emergencyDetected: false,
+    response: {
+      symptoms: [],
+      riskScore: 0,
+      confidence: 0.8,
+      recommendations: [],
+      safetyIssues: [],
+    },
+  }));
+  await assert.rejects(
+    invalidService.orchestrateConsultation({
+      consultationId: "consultation-test",
+      language: "en",
+      symptoms: [],
+      riskLevel: "unknown",
+      history: [],
+      metadata: {},
+    }),
+    InvalidAIResponseError,
+  );
 });
 
 test("backend sends the contract request to /process and maps Python 503 to generic unavailable", async () => {

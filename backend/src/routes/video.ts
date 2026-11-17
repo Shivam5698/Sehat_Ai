@@ -29,7 +29,7 @@ videoRouter.get('/session/:sessionId/status', requireAuth, getVideoSessionStatus
 videoRouter.get('/session/:sessionId/participants', requireAuth, listSessionParticipants);
 videoRouter.post('/session/pause', requireAuth, pauseVideoSession);
 videoRouter.post('/session/resume', requireAuth, resumeVideoSession);
-videoRouter.post('/transcript', requireConsultationAccess(), sendVideoTranscript);
+videoRouter.post('/transcript', requireAuth, requireConsultationAccess(), sendVideoTranscript);
 
 // Avatar Control
 videoRouter.post('/avatar/respond', requireAuth, avatarRespond);

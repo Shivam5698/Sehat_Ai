@@ -1,4 +1,5 @@
-import { AIOrchestratorService, OrchestrationResult } from '../../services/aiOrchestratorService.js';
+import { AIOrchestratorService } from '../../services/aiOrchestratorService.js';
+import type { OrchestrationResult } from '../../services/aiResponseBoundary.js';
 import { config } from '../../config/index.js';
 import { ConversationContext, TranscriptHistoryEntry } from '../../types/consultation.js';
 
